@@ -1,0 +1,10 @@
+.env
+.env.local
+backend/target/
+web/node_modules/
+web/.next/
+*.tsbuildinfo
+*.log
+.idea/
+.vscode/
+tmp/
