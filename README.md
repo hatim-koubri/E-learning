@@ -14,7 +14,7 @@ Socle d’une plateforme de cours en ligne : comptes participants, demandes form
 2. Démarrer MySQL et Mailpit :
 
 ```powershell
-docker-compose up -d
+docker compose up -d
 ```
 
 3. Démarrer le backend :
@@ -35,6 +35,12 @@ npm run dev
 ```
 
 L’application est disponible sur `http://localhost:3000` et Mailpit sur `http://localhost:8025`.
+
+Pour vérifier l’état des services :
+
+```powershell
+docker compose ps
+```
 
 ## Administrateur de développement
 
@@ -59,4 +65,3 @@ npm run build
 ```
 
 Les PDF de conception restent inchangés. Le suivi détaillé est dans `docs/sprint-1-suivi.md`.
-

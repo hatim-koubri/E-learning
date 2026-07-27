@@ -16,21 +16,23 @@ import java.util.List;
 @Configuration @EnableMethodSecurity
 public class SecurityConfig {
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
-    @Bean CorsConfigurationSource cors(@Value("${app.cors.allowed-origin}") String origin) {
+    @Bean CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origin}") String origin) {
         var c = new CorsConfiguration();
-        c.setAllowedOrigins(List.of(origin));
+        c.setAllowedOrigins(List.of(origin.isBlank() ? "http://localhost:3000" : origin));
         c.setAllowedMethods(List.of("GET","POST","PATCH","OPTIONS"));
         c.setAllowedHeaders(List.of("Authorization","Content-Type"));
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
         return source;
     }
-    @Bean SecurityFilterChain chain(HttpSecurity http, JwtAuthenticationFilter jwt) throws Exception {
-        return http.csrf(csrf -> csrf.disable()).cors(cors -> {})
+    @Bean SecurityFilterChain chain(HttpSecurity http, JwtAuthenticationFilter jwt,
+                                    CorsConfigurationSource corsConfigurationSource) throws Exception {
+        return http.csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e
-                        .authenticationEntryPoint((req,res,ex) -> res.sendError(HttpStatus.UNAUTHORIZED.value()))
-                        .accessDeniedHandler((req,res,ex) -> res.sendError(HttpStatus.FORBIDDEN.value())))
+                        .authenticationEntryPoint((req,res,ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
+                        .accessDeniedHandler((req,res,ex) -> res.setStatus(HttpStatus.FORBIDDEN.value())))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/auth/register/**","/api/auth/login",
                                 "/api/auth/forgot-password","/api/auth/reset-password",
@@ -40,4 +42,3 @@ public class SecurityConfig {
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
     }
 }
-
