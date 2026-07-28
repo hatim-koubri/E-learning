@@ -5,6 +5,7 @@ web/node_modules/
 web/.next/
 *.tsbuildinfo
 *.log
+uploads/
 .idea/
 .vscode/
 tmp/

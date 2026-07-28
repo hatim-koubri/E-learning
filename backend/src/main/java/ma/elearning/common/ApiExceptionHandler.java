@@ -5,6 +5,7 @@ import org.springframework.http.*;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.time.Instant;
 import java.util.*;
 
@@ -26,5 +27,11 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(new ApiError(Instant.now(), 400, "VALIDATION_ERROR",
                 "Les données fournies sont invalides.", req.getRequestURI(), errors));
     }
-}
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> uploadTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(new ApiError(Instant.now(), 413,
+                "FILE_TOO_LARGE", "Le fichier dépasse la taille maximale autorisée.",
+                req.getRequestURI(), Map.of()));
+    }
+}

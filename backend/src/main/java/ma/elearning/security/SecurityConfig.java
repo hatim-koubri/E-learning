@@ -19,7 +19,7 @@ public class SecurityConfig {
     @Bean CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origin}") String origin) {
         var c = new CorsConfiguration();
         c.setAllowedOrigins(List.of(origin.isBlank() ? "http://localhost:3000" : origin));
-        c.setAllowedMethods(List.of("GET","POST","PATCH","OPTIONS"));
+        c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         c.setAllowedHeaders(List.of("Authorization","Content-Type"));
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
@@ -38,6 +38,7 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password","/api/auth/reset-password",
                                 "/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/formateur/**").hasRole("FORMATEUR")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
     }

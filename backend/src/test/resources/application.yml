@@ -25,4 +25,12 @@ app:
     enabled: false
     email: ""
     password: ""
-
+  storage:
+    endpoint: http://localhost:9000
+    access-key: test-access
+    secret-key: test-secret
+    bucket: test-contents
+  upload:
+    image-max-bytes: 10485760
+    pdf-max-bytes: 52428800
+    video-max-bytes: 524288000

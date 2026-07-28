@@ -1,4 +1,4 @@
-# Plateforme E-learning - Sprint 1
+# Plateforme E-learning
 
 Socle d’une plateforme de cours en ligne : comptes participants, demandes formateurs, validation administrateur, connexion JWT et réinitialisation du mot de passe.
 
@@ -11,7 +11,7 @@ Socle d’une plateforme de cours en ligne : comptes participants, demandes form
 ## Installation locale
 
 1. Copier `.env.example` vers `.env` et remplacer toutes les valeurs factices.
-2. Démarrer MySQL et Mailpit :
+2. Démarrer MySQL, MinIO et Mailpit :
 
 ```powershell
 docker compose up -d
@@ -34,7 +34,8 @@ npm install
 npm run dev
 ```
 
-L’application est disponible sur `http://localhost:3000` et Mailpit sur `http://localhost:8025`.
+L’application est disponible sur `http://localhost:3000`, Mailpit sur `http://localhost:8025`
+et la console MinIO sur `http://localhost:9001`.
 
 Pour vérifier l’état des services :
 
@@ -56,7 +57,7 @@ Les tokens de réinitialisation sont opaques, hachés en SHA-256 en base, utilis
 
 ```powershell
 cd backend
-mvn test
+mvn clean test
 
 cd ../web
 npm run typecheck
@@ -64,4 +65,18 @@ npm run lint
 npm run build
 ```
 
-Les PDF de conception restent inchangés. Le suivi détaillé est dans `docs/sprint-1-suivi.md`.
+Les PDF de conception restent inchangés. Les suivis détaillés sont dans
+`docs/sprint-1-suivi.md` et `docs/sprint-2-suivi.md`.
+
+## Sprint 2 - Formations et contenus
+
+Un formateur validé dispose du tableau de bord `/formateur/formations`. Il peut créer et
+modifier ses formations, organiser les modules et chapitres, configurer le premier module
+comme aperçu gratuit et ajouter des images, vidéos, PDF ou liens YouTube.
+
+Les fichiers sont stockés dans le bucket MinIO configuré par `MINIO_BUCKET`; MySQL ne
+conserve que leurs métadonnées et leur clé d'objet. Les limites d'upload et identifiants
+MinIO se configurent dans `.env`. Aucun accès temporaire participant n'est généré au
+Sprint 2 : cette autorisation appartient au Sprint 3.
+
+Le suivi détaillé du Sprint 2 est dans `docs/sprint-2-suivi.md`.

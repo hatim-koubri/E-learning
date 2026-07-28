@@ -8,8 +8,8 @@ import org.springframework.context.annotation.*;
 @Configuration
 public class OpenApiConfig {
     @Bean OpenAPI api() {
-        return new OpenAPI().info(new Info().title("E-learning API").version("Sprint 1")
-                .description("Authentification, profil et validation des formateurs."))
+        return new OpenAPI().info(new Info().title("E-learning API").version("Sprint 2")
+                .description("Authentification, formations structurées et ressources pédagogiques."))
                 .components(new Components().addSecuritySchemes("bearerAuth",
                         new SecurityScheme().type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))
                 .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
