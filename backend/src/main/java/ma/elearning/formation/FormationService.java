@@ -278,6 +278,11 @@ public class FormationService {
         formation.setNiveau(request.niveau());
         formation.setCategorie(request.categorie().trim());
         formation.setPrix(request.prix().setScale(2, RoundingMode.UNNECESSARY));
+        formation.setSupplementClasses(request.supplementClasses().setScale(2, RoundingMode.UNNECESSARY));
+        formation.setClassesGratuites(request.classesGratuites());
+        if (request.supplementClasses().signum() == 0 && !request.classesGratuites()) {
+            formation.setClassesGratuites(false);
+        }
     }
 
     private void apply(FormationModule module, ModuleRequest request) {

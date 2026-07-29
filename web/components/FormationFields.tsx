@@ -12,6 +12,8 @@ export function FormationFields({initial}:{initial?:FormationDetail}){
       </select></label>
       <label>Catégorie<input name="categorie" required maxLength={120} defaultValue={initial?.categorie}/></label>
       <label>Prix (MAD)<input name="prix" type="number" min="0" step="0.01" required defaultValue={initial?.prix??0}/></label>
+      <label>Supplément classes (DH)<input name="supplementClasses" type="number" min="0" step="0.01" required defaultValue={initial?.supplementClasses??0}/></label>
+      <label className="check"><input name="classesGratuites" type="checkbox" defaultChecked={initial?.classesGratuites}/> Proposer gratuitement les classes si le supplément vaut 0 DH</label>
     </div>
   </>;
 }
@@ -20,5 +22,6 @@ export function formationPayload(form:HTMLFormElement):FormationPayload{
   const data=new FormData(form);
   return {titre:String(data.get("titre")),description:String(data.get("description")),
     langue:String(data.get("langue")),niveau:String(data.get("niveau")) as Niveau,
-    categorie:String(data.get("categorie")),prix:Number(data.get("prix"))};
+    categorie:String(data.get("categorie")),prix:Number(data.get("prix")),
+    supplementClasses:Number(data.get("supplementClasses")??0),classesGratuites:data.get("classesGratuites")==="on"};
 }

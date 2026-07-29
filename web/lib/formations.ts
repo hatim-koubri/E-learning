@@ -1,10 +1,10 @@
 export type Niveau="DEBUTANT"|"INTERMEDIAIRE"|"AVANCE"|"TOUS_NIVEAUX";
 export type ResourceType="IMAGE"|"VIDEO"|"PDF"|"YOUTUBE";
-export type FormationPayload={titre:string;description:string;langue:string;niveau:Niveau;categorie:string;prix:number};
+export type FormationPayload={titre:string;description:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses:number;classesGratuites:boolean};
 export type Ressource={id:number;type:ResourceType;titre:string;ordre:number;nomOriginal?:string;typeMime?:string;taille?:number;cleStockage?:string;urlYoutube?:string;telechargeable:boolean;statut:string;createdAt:string};
 export type Chapitre={id:number;titre:string;description?:string;ordre:number;ressources:Ressource[]};
 export type FormationModule={id:number;titre:string;description?:string;ordre:number;apercuGratuit:boolean;chapitres:Chapitre[]};
-export type FormationSummary={id:number;titre:string;description:string;imageCouvertureKey?:string;langue:string;niveau:Niveau;categorie:string;prix:number;statut:string;nombreModules:number;createdAt:string;updatedAt:string};
+export type FormationSummary={id:number;titre:string;description:string;imageCouvertureKey?:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses?:number;classesGratuites?:boolean;statut:string;nombreModules:number;createdAt:string;updatedAt:string};
 export type FormationDetail=Omit<FormationSummary,"nombreModules">&{modules:FormationModule[]};
 
 export function formatBytes(value?:number){

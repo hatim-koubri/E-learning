@@ -124,3 +124,23 @@ sonar-scanner -Dsonar.host.url=$env:SONAR_HOST_URL -Dsonar.token=$env:SONAR_TOKE
 
 Le port `9002` évite le conflit avec MinIO, déjà exposé sur le port `9000` par la
 configuration Docker locale. Adapter `SONAR_HOST_URL` si SonarQube utilise une autre adresse.
+
+## Sprint 4 - Classes virtuelles et mobile
+
+Le supplément de l'offre avec classes est configuré sur la formation. Le formateur gère ensuite
+ses classes sur `/formateur/classes`; le participant affecté retrouve ses séances sur
+`/participant/classes`. Le backend génère les salles et contrôle l'accès avant de fournir Jitsi.
+
+L'instance se configure avec `JITSI_BASE_URL`. Pour Android Emulator :
+
+```powershell
+cd mobile
+flutter run --dart-define=API_URL=http://10.0.2.2:8080/api
+```
+
+Le build iOS nécessite macOS et Xcode.
+
+La mise à niveau simulée est idempotente grâce à l'en-tête `Idempotency-Key`. Une inscription avec
+classes rend seulement le participant éligible : le formateur doit encore l'affecter à une classe.
+L'application Flutter conserve le JWT avec `flutter_secure_storage`, bloque les appels hors ligne et
+ouvre les ressources et réunions via des URL délivrées après contrôle du backend.

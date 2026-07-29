@@ -31,6 +31,7 @@ public class Inscription {
     public Instant getDateInscription() { return dateInscription; }
     public InscriptionStatut getStatut() { return statut; }
     public TypeAcces getTypeAcces() { return typeAcces; }
+    public void setTypeAcces(TypeAcces typeAcces) { this.typeAcces = typeAcces; }
     public BigDecimal getProgression() { return progression; }
     public void setProgression(BigDecimal progression) { this.progression = progression; }
     public BigDecimal getPrixPaye() { return prixPaye; }

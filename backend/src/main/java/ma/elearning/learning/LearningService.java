@@ -21,11 +21,46 @@ public class LearningService {
  private final ChapitreRepository chapitres; private final InscriptionRepository inscriptions;
  private final ProgressionChapitreRepository progressions; private final UserRepository users;
  private final ObjectStorage storage; private final int expiry;
+ private final OperationAccesRepository operations;
  public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
   InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
-  @Value("${app.storage.url-expiry-seconds:300}") int expiry){
+  @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations){
   this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
   this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
+  this.operations=operations;
+ }
+ @Transactional
+ public UpgradeResponse upgrade(String email,Long formationId,String key){
+  if(key==null||key.isBlank()||key.length()>100)throw error(HttpStatus.BAD_REQUEST,"IDEMPOTENCY_KEY_REQUIRED","Une clé Idempotency-Key est obligatoire.");
+  OperationAcces previous=operations.findByCleIdempotence(key).orElse(null);
+  if(previous!=null){
+   if(!previous.getInscription().getParticipant().getEmail().equalsIgnoreCase(email)||!previous.getInscription().getFormation().getId().equals(formationId))
+    throw error(HttpStatus.CONFLICT,"IDEMPOTENCY_KEY_CONFLICT","Cette clé est déjà utilisée.");
+   return upgradeResponse(previous);
+  }
+  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+   .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Achetez d'abord l'accès au contenu."));
+  if(i.getTypeAcces()==TypeAcces.CONTENU_ET_CLASSES)
+   throw error(HttpStatus.CONFLICT,"ALREADY_UPGRADED","L'accès avec classes est déjà actif.");
+  Formation f=i.getFormation();
+  if(f.getSupplementClasses().signum()==0&&!f.isClassesGratuites())
+   throw error(HttpStatus.CONFLICT,"CLASSES_NOT_OFFERED","L'option avec classes n'est pas proposée.");
+  OperationAcces op=new OperationAcces();op.setInscription(i);op.setCleIdempotence(key);
+  op.setMontantSimule(f.getSupplementClasses());op.setTypeAccesObtenu(TypeAcces.CONTENU_ET_CLASSES);
+  i.setTypeAcces(TypeAcces.CONTENU_ET_CLASSES);inscriptions.save(i);
+  return upgradeResponse(operations.saveAndFlush(op));
+ }
+ @Transactional
+ public UpgradeResponse enrollComplete(String email,Long formationId,String key){
+  if(key==null||key.isBlank()||key.length()>100)throw error(HttpStatus.BAD_REQUEST,"IDEMPOTENCY_KEY_REQUIRED","Une clé Idempotency-Key est obligatoire.");
+  OperationAcces previous=operations.findByCleIdempotence(key).orElse(null);
+  if(previous!=null){if(!previous.getInscription().getParticipant().getEmail().equalsIgnoreCase(email)||!previous.getInscription().getFormation().getId().equals(formationId))throw error(HttpStatus.CONFLICT,"IDEMPOTENCY_KEY_CONFLICT","Cette clé est déjà utilisée.");return upgradeResponse(previous);}
+  User u=user(email);if(!(u instanceof Participant p))throw error(HttpStatus.FORBIDDEN,"PARTICIPANT_ONLY","Seul un participant peut s'inscrire.");
+  Formation f=published(formationId);if(f.getSupplementClasses().signum()==0&&!f.isClassesGratuites())throw error(HttpStatus.CONFLICT,"CLASSES_NOT_OFFERED","L'option avec classes n'est pas proposée.");
+  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId).orElse(null);
+  if(i!=null){if(i.getTypeAcces()==TypeAcces.CONTENU_ET_CLASSES)throw error(HttpStatus.CONFLICT,"ALREADY_UPGRADED","L'accès avec classes est déjà actif.");return upgrade(email,formationId,key);}
+  i=new Inscription();i.setParticipant(p);i.setFormation(f);i.setTypeAcces(TypeAcces.CONTENU_ET_CLASSES);i.setPrixPaye(f.getPrix().add(f.getSupplementClasses()));i=inscriptions.saveAndFlush(i);
+  OperationAcces op=new OperationAcces();op.setInscription(i);op.setCleIdempotence(key);op.setMontantSimule(i.getPrixPaye());op.setTypeAccesObtenu(TypeAcces.CONTENU_ET_CLASSES);return upgradeResponse(operations.saveAndFlush(op));
  }
 
  @Transactional(readOnly=true)
@@ -94,6 +129,7 @@ public class LearningService {
   if(u.getRole()==Role.FORMATEUR)return f.getFormateur().getEmail().equalsIgnoreCase(email);
   return inscriptions.existsByParticipantEmailAndFormationIdAndStatutIn(email,f.getId(),List.of(InscriptionStatut.ACTIVE,InscriptionStatut.CONFIRMEE));
  }
+ @Transactional(readOnly=true) public List<MyFormation> mine(String email){return inscriptions.findByParticipantEmailOrderByDateInscriptionDesc(email).stream().map(i->new MyFormation(i.getId(),i.getFormation().getId(),i.getFormation().getTitre(),i.getTypeAcces(),i.getStatut(),i.getProgression(),i.getPrixPaye(),i.getDevise())).toList();}
  private boolean isParticipantEnrolled(String email,Long id){return email!=null&&inscriptions.findByParticipantEmailAndFormationId(email,id).isPresent();}
  private CatalogueItem item(Formation f){int chapters=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
   return new CatalogueItem(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),f.getNiveau(),
@@ -108,6 +144,7 @@ public class LearningService {
  private User user(String email){return users.findByEmail(email).orElseThrow(()->error(HttpStatus.UNAUTHORIZED,"UNAUTHORIZED","Authentification requise."));}
  private String clean(String v){return v==null?"":v.trim();}
  private InscriptionResponse response(Inscription i){return new InscriptionResponse(i.getId(),i.getFormation().getId(),i.getDateInscription(),i.getStatut(),i.getTypeAcces(),i.getProgression(),i.getPrixPaye(),i.getDevise(),i.getModePaiement());}
+ private UpgradeResponse upgradeResponse(OperationAcces o){return new UpgradeResponse(o.getId(),o.getInscription().getId(),o.getMontantSimule(),o.getDevise(),o.getDateOperation(),o.getTypeAccesObtenu(),o.getModePaiement(),o.getStatut());}
  private BusinessException notFound(){return error(HttpStatus.NOT_FOUND,"FORMATION_NOT_FOUND","Formation ou contenu introuvable.");}
  private BusinessException error(HttpStatus status,String code,String message){return new BusinessException(status,code,message);}
 }

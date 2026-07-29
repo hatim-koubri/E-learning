@@ -16,15 +16,24 @@ public final class FormationDtos {
             @NotBlank @Pattern(regexp = "^[a-zA-Z]{2,3}(-[a-zA-Z]{2})?$") String langue,
             @NotNull NiveauFormation niveau,
             @NotBlank @Size(max = 120) String categorie,
-            @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal prix) {}
+            @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal prix,
+            @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal supplementClasses,
+            boolean classesGratuites) {
+        public FormationRequest(String titre, String description, String langue, NiveauFormation niveau,
+                                String categorie, BigDecimal prix) {
+            this(titre, description, langue, niveau, categorie, prix, BigDecimal.ZERO, false);
+        }
+    }
     public record FormationStatusRequest(@NotNull FormationStatus statut) {}
 
     public record FormationSummary(Long id, String titre, String description, String imageCouvertureKey,
                                    String langue, NiveauFormation niveau, String categorie, BigDecimal prix,
+                                   BigDecimal supplementClasses, boolean classesGratuites,
                                    FormationStatus statut, int nombreModules, Instant createdAt, Instant updatedAt) {}
 
     public record FormationDetail(Long id, String titre, String description, String imageCouvertureKey,
                                   String langue, NiveauFormation niveau, String categorie, BigDecimal prix,
+                                  BigDecimal supplementClasses, boolean classesGratuites,
                                   FormationStatus statut, Instant createdAt, Instant updatedAt,
                                   List<ModuleResponse> modules) {}
 

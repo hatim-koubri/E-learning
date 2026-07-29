@@ -32,6 +32,10 @@ public class Formation {
     private String categorie;
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal prix;
+    @Column(name = "supplement_classes", nullable = false, precision = 10, scale = 2)
+    private BigDecimal supplementClasses = BigDecimal.ZERO;
+    @Column(name = "classes_gratuites", nullable = false)
+    private boolean classesGratuites;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
     private FormationStatus statut = FormationStatus.BROUILLON;
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false)
@@ -59,6 +63,10 @@ public class Formation {
     public void setCategorie(String categorie) { this.categorie = categorie; }
     public BigDecimal getPrix() { return prix; }
     public void setPrix(BigDecimal prix) { this.prix = prix; }
+    public BigDecimal getSupplementClasses() { return supplementClasses; }
+    public void setSupplementClasses(BigDecimal supplementClasses) { this.supplementClasses = supplementClasses; }
+    public boolean isClassesGratuites() { return classesGratuites; }
+    public void setClassesGratuites(boolean classesGratuites) { this.classesGratuites = classesGratuites; }
     public FormationStatus getStatut() { return statut; }
     public void setStatut(FormationStatus statut) { this.statut = statut; }
     public Instant getCreatedAt() { return createdAt; }

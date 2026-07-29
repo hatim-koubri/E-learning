@@ -25,4 +25,8 @@ public final class LearningDtos {
  public record ProgressRequest(@NotNull Boolean termine,@Min(0) int positionVideoSecondes){}
  public record ProgressResponse(Long formationId,Long chapitreId,boolean termine,int positionVideoSecondes,BigDecimal pourcentage){}
  public record ResourceAccess(Long resourceId,ResourceType type,String url,int expiresInSeconds,boolean telechargeable){}
+ public record UpgradeResponse(Long operationId,Long inscriptionId,BigDecimal montant,String devise,Instant date,
+  TypeAcces typeAcces,ModePaiement mode,String statut){}
+ public record MyFormation(Long inscriptionId,Long formationId,String titre,TypeAcces typeAcces,
+  InscriptionStatut statut,BigDecimal progression,BigDecimal prixPaye,String devise){}
 }
