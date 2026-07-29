@@ -10,14 +10,14 @@ public final class FormationMapper {
     public static FormationSummary toSummary(Formation formation) {
         return new FormationSummary(formation.getId(), formation.getTitre(), formation.getDescription(),
                 formation.getImageCouvertureKey(), formation.getLangue(), formation.getNiveau(),
-                formation.getCategorie(), formation.getPrix(), formation.getStatut(),
+                formation.getCategorie(), formation.getPrix(), formation.getSupplementClasses(), formation.isClassesGratuites(), formation.getStatut(),
                 formation.getModules().size(), formation.getCreatedAt(), formation.getUpdatedAt());
     }
 
     public static FormationDetail toDetail(Formation formation) {
         return new FormationDetail(formation.getId(), formation.getTitre(), formation.getDescription(),
                 formation.getImageCouvertureKey(), formation.getLangue(), formation.getNiveau(),
-                formation.getCategorie(), formation.getPrix(), formation.getStatut(),
+                formation.getCategorie(), formation.getPrix(), formation.getSupplementClasses(), formation.isClassesGratuites(), formation.getStatut(),
                 formation.getCreatedAt(), formation.getUpdatedAt(),
                 formation.getModules().stream().map(FormationMapper::toModule).toList());
     }
