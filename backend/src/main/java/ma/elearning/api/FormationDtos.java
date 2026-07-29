@@ -17,6 +17,7 @@ public final class FormationDtos {
             @NotNull NiveauFormation niveau,
             @NotBlank @Size(max = 120) String categorie,
             @NotNull @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal prix) {}
+    public record FormationStatusRequest(@NotNull FormationStatus statut) {}
 
     public record FormationSummary(Long id, String titre, String description, String imageCouvertureKey,
                                    String langue, NiveauFormation niveau, String categorie, BigDecimal prix,

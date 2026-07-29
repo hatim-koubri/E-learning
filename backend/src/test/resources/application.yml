@@ -30,6 +30,7 @@ app:
     access-key: test-access
     secret-key: test-secret
     bucket: test-contents
+    url-expiry-seconds: 300
   upload:
     image-max-bytes: 10485760
     pdf-max-bytes: 52428800

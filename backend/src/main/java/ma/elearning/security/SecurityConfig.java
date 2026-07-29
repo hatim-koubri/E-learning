@@ -36,9 +36,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/auth/register/**","/api/auth/login",
                                 "/api/auth/forgot-password","/api/auth/reset-password",
+                                "/api/catalogue/**",
                                 "/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/formateur/**").hasRole("FORMATEUR")
+                        .requestMatchers("/api/participant/**").hasRole("PARTICIPANT")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
     }

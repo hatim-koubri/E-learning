@@ -66,7 +66,7 @@ npm run build
 ```
 
 Les PDF de conception restent inchangés. Les suivis détaillés sont dans
-`docs/sprint-1-suivi.md` et `docs/sprint-2-suivi.md`.
+`docs/sprint-1-suivi.md`, `docs/sprint-2-suivi.md` et `docs/sprint-3-suivi.md`.
 
 ## Sprint 2 - Formations et contenus
 
@@ -80,3 +80,17 @@ MinIO se configurent dans `.env`. Aucun accès temporaire participant n'est gén
 Sprint 2 : cette autorisation appartient au Sprint 3.
 
 Le suivi détaillé du Sprint 2 est dans `docs/sprint-2-suivi.md`.
+
+## Sprint 3 - Catalogue, apprentissage et évaluations
+
+Le catalogue public est disponible sur `/catalogue`. Une formation publiée expose son programme et
+son premier module d'aperçu sans authentification. Un participant peut s'inscrire gratuitement ou
+simuler l'achat d'une formation payante; aucune donnée bancaire n'est collectée. L'inscription
+déverrouille les ressources en ligne, la progression ordonnée et les QCM après les prérequis.
+
+Les ressources MinIO restent privées. Le backend contrôle la formation et les droits avant de produire
+une URL temporaire configurable par `MINIO_URL_EXPIRY_SECONDS`. Les téléchargements hors ligne et
+l'accès aux classes ne font pas partie de ce sprint.
+
+Le formateur publie une formation depuis son éditeur et gère ses QCM sur
+`/formateur/formations/{id}/quiz`.
