@@ -80,5 +80,31 @@ class Sprint3IntegrationTest {
    .content(json.writeValueAsString(new Submission(Map.of(q,List.of(answer))))))
    .andExpect(status().isOk()).andExpect(jsonPath("$.pourcentage").value(100.0)).andExpect(jsonPath("$.reussi").value(true));
  }
+ @Test void progressionEnforcesOrderAndRemainsIdempotent() throws Exception{
+  String token=jwt.generate(participant);mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+  var modules=formationService.detail(trainer.getEmail(),formationId).modules();
+  Long first=modules.getFirst().chapitres().getFirst().id(),second=modules.get(1).chapitres().getFirst().id();
+  String done="{\"termine\":true,\"positionVideoSecondes\":42}";
+  mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+second+"/progression").header("Authorization","Bearer "+token).contentType("application/json").content(done))
+   .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PREREQUISITE_REQUIRED"));
+  mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+first+"/progression").header("Authorization","Bearer "+token).contentType("application/json").content(done))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.pourcentage").value(50.0));
+  mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+first+"/progression").header("Authorization","Bearer "+token).contentType("application/json").content(done))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.pourcentage").value(50.0));
+ }
+ @Test void attemptWindowAndForeignAnswersAreEnforcedByBackend() throws Exception{
+  String token=jwt.generate(participant);mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+  for(var module:formationService.detail(trainer.getEmail(),formationId).modules())for(var chapter:module.chapitres())mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+chapter.id()+"/progression")
+   .header("Authorization","Bearer "+token).contentType("application/json").content("{\"termine\":true,\"positionVideoSecondes\":0}")).andExpect(status().isOk());
+  QuizAdmin created=quizService.create(trainer.getEmail(),formationId,new QuizRequest("Limites",new BigDecimal("50"),true,true,List.of(
+   new QuestionEdit(null,"Bonne réponse ?",0,BigDecimal.ONE,List.of(new AnswerEdit(null,"Oui",true,0),new AnswerEdit(null,"Non",false,1))))));
+  Long question=created.questions().getFirst().id(),answer=created.questions().getFirst().reponses().getFirst().id();
+  mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json")
+   .content(json.writeValueAsString(new Submission(Map.of(999L,List.of(answer)))))).andExpect(status().isBadRequest());
+  String submission=json.writeValueAsString(new Submission(Map.of(question,List.of(answer))));
+  for(int n=0;n<3;n++)mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json").content(submission)).andExpect(status().isOk());
+  mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json").content(submission))
+   .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("ATTEMPT_LIMIT"));
+ }
  private <T extends User>T save(T u,String email,Role role){u.setNom("Test");u.setEmail(email);u.setPasswordHash("hash");u.setRole(role);u.setStatut(AccountStatus.ACTIF);return (T)users.saveAndFlush(u);}
 }
