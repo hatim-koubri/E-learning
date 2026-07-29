@@ -94,3 +94,33 @@ l'accès aux classes ne font pas partie de ce sprint.
 
 Le formateur publie une formation depuis son éditeur et gère ses QCM sur
 `/formateur/formations/{id}/quiz`.
+
+## Qualité, couverture et SonarQube
+
+Les rapports de couverture attendus par SonarQube sont produits par les commandes suivantes :
+
+```powershell
+cd backend
+mvn clean verify
+
+cd ../web
+npm run test:coverage
+npm run typecheck
+npm run lint
+npm run build
+```
+
+JaCoCo écrit son rapport XML dans `backend/target/site/jacoco/jacoco.xml`. Vitest écrit
+le rapport LCOV dans `web/coverage/lcov.info`. Ces rapports générés ne sont pas versionnés.
+
+Après leur génération, lancer l'analyse depuis la racine du projet avec une instance
+SonarQube accessible. Le jeton reste exclusivement dans une variable d'environnement :
+
+```powershell
+$env:SONAR_HOST_URL="http://localhost:9002"
+$env:SONAR_TOKEN="<jeton SonarQube>"
+sonar-scanner -Dsonar.host.url=$env:SONAR_HOST_URL -Dsonar.token=$env:SONAR_TOKEN
+```
+
+Le port `9002` évite le conflit avec MinIO, déjà exposé sur le port `9000` par la
+configuration Docker locale. Adapter `SONAR_HOST_URL` si SonarQube utilise une autre adresse.
