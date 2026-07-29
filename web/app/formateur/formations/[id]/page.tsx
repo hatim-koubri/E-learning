@@ -63,7 +63,7 @@ export default function FormationEditor(){
   }
   if(!formation)return <Protected role="FORMATEUR"><main><p>{error||"Chargement…"}</p></main></Protected>;
   return <Protected role="FORMATEUR"><main className="workspace"><section className="wide editor">
-    <header className="page-header"><div><Link href="/formateur/formations">← Mes formations</Link><h1>{formation.titre}</h1><span className="badge">{formation.statut}</span></div></header>
+    <header className="page-header"><div><Link href="/formateur/formations">← Mes formations</Link><h1>{formation.titre}</h1><span className="badge">{formation.statut}</span></div><div className="row"><Link className="button-link" href={`/formateur/formations/${id}/quiz`}>Gérer les QCM</Link><button onClick={()=>run(()=>api(`/formateur/formations/${id}/statut`,{method:"PUT",body:JSON.stringify({statut:formation.statut==="PUBLIEE"?"DEPUBLIEE":"PUBLIEE"})}),formation.statut==="PUBLIEE"?"Formation dépubliée":"Formation publiée")}>{formation.statut==="PUBLIEE"?"Dépublier":"Publier"}</button></div></header>
     {error&&<p className="message error">{error}</p>}{notice&&<p className="message">{notice}</p>}
     <details className="card panel"><summary>Informations de la formation</summary>
       <form className="stack section-space" onSubmit={updateFormation}><FormationFields initial={formation}/><button>Enregistrer</button></form>

@@ -76,6 +76,18 @@ public class FormationService {
     }
 
     @Transactional
+    public FormationDetail changeStatus(String email, Long id, FormationStatus status) {
+        Formation formation = ownedFormation(email, id);
+        if (status == FormationStatus.PUBLIEE && (formation.getModules().isEmpty() ||
+                formation.getModules().stream().anyMatch(module -> module.getChapitres().isEmpty()))) {
+            throw new BusinessException(HttpStatus.CONFLICT, "INCOMPLETE_FORMATION",
+                    "Une formation publiée doit contenir au moins un module et un chapitre par module.");
+        }
+        formation.setStatut(status);
+        return FormationMapper.toDetail(formations.saveAndFlush(formation));
+    }
+
+    @Transactional
     public FormationDetail uploadCover(String email, Long id, MultipartFile file) {
         Formation formation = ownedFormation(email, id);
         ValidatedFile valid = uploads.validate(file, ResourceType.IMAGE);

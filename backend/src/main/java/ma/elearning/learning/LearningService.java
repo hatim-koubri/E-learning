@@ -1,0 +1,113 @@
+package ma.elearning.learning;
+
+import ma.elearning.api.LearningDtos.*;
+import ma.elearning.common.BusinessException;
+import ma.elearning.formation.*;
+import ma.elearning.storage.ObjectStorage;
+import ma.elearning.user.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.*;
+import java.util.*;
+
+@Service
+public class LearningService {
+ private final FormationRepository formations; private final RessourceRepository ressources;
+ private final ChapitreRepository chapitres; private final InscriptionRepository inscriptions;
+ private final ProgressionChapitreRepository progressions; private final UserRepository users;
+ private final ObjectStorage storage; private final int expiry;
+ public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
+  InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
+  @Value("${app.storage.url-expiry-seconds:300}") int expiry){
+  this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
+  this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
+ }
+
+ @Transactional(readOnly=true)
+ public CataloguePage catalogue(String q,String categorie,String langue,NiveauFormation niveau,int page,int size){
+  int safeSize=Math.min(Math.max(size,1),50);
+  Page<Formation> result=formations.catalogue(clean(q),clean(categorie),clean(langue),niveau,
+   PageRequest.of(Math.max(page,0),safeSize,Sort.by(Sort.Direction.ASC,"titre").and(Sort.by("id"))));
+  return new CataloguePage(result.getContent().stream().map(this::item).toList(),result.getNumber(),result.getSize(),
+   result.getTotalElements(),result.getTotalPages());
+ }
+ @Transactional(readOnly=true)
+ public CatalogueDetail detail(Long id,String email){
+  Formation f=published(id); boolean full=hasFullAccess(f,email);
+  int chapterCount=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
+  return new CatalogueDetail(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),
+   f.getNiveau(),f.getCategorie(),f.getPrix(),"DH",f.getFormateur().getNom(),f.getModules().size(),chapterCount,
+   isParticipantEnrolled(email,id),f.getModules().stream().map(m->module(m,full)).toList());
+ }
+ @Transactional
+ public InscriptionResponse enroll(String email,Long formationId){
+  User user=user(email); if(!(user instanceof Participant participant))
+   throw error(HttpStatus.FORBIDDEN,"PARTICIPANT_ONLY","Seul un participant peut s'inscrire.");
+  Formation formation=published(formationId);
+  Inscription existing=inscriptions.findByParticipantEmailAndFormationId(email,formationId).orElse(null);
+  if(existing!=null)return response(existing);
+  Inscription i=new Inscription();i.setParticipant(participant);i.setFormation(formation);i.setPrixPaye(formation.getPrix());
+  try{return response(inscriptions.saveAndFlush(i));}
+  catch(DataIntegrityViolationException ex){
+   return inscriptions.findByParticipantEmailAndFormationId(email,formationId).map(this::response).orElseThrow(()->ex);
+  }
+ }
+ @Transactional(readOnly=true)
+ public ResourceAccess resource(String email,Long formationId,Long resourceId){
+  Formation f=published(formationId);
+  RessourcePedagogique r=ressources.findById(resourceId).orElseThrow(this::notFound);
+  if(!r.getChapitre().getModule().getFormation().getId().equals(formationId))throw notFound();
+  boolean preview=r.getChapitre().getModule().isApercuGratuit();
+  if(!preview&&!hasFullAccess(f,email))throw error(HttpStatus.FORBIDDEN,"CONTENT_LOCKED","Une inscription active est requise.");
+  String accessUrl=r.getType()==ResourceType.YOUTUBE?r.getUrlYoutube():storage.temporaryUrl(r.getCleStockage());
+  return new ResourceAccess(r.getId(),r.getType(),accessUrl,expiry,false);
+ }
+ @Transactional
+ public ProgressResponse progress(String email,Long formationId,Long chapterId,boolean completed,int seconds){
+  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+   .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Une inscription active est requise."));
+  Chapitre chapter=chapitres.findById(chapterId).orElseThrow(this::notFound);
+  if(!chapter.getModule().getFormation().getId().equals(formationId))throw notFound();
+  List<Chapitre> ordered=i.getFormation().getModules().stream().flatMap(m->m.getChapitres().stream()).toList();
+  int index=ordered.indexOf(chapter);
+  if(completed&&index>0){
+   Set<Long> done=progressions.findByInscriptionId(i.getId()).stream().filter(ProgressionChapitre::isTermine)
+    .map(p->p.getChapitre().getId()).collect(java.util.stream.Collectors.toSet());
+   if(!done.contains(ordered.get(index-1).getId()))throw error(HttpStatus.CONFLICT,"PREREQUISITE_REQUIRED","Terminez le chapitre précédent.");
+  }
+  ProgressionChapitre p=progressions.findByInscriptionIdAndChapitreId(i.getId(),chapterId).orElseGet(()->{
+   ProgressionChapitre n=new ProgressionChapitre();n.setInscription(i);n.setChapitre(chapter);return n;});
+  p.setTermine(completed);p.setPositionVideoSecondes(Math.max(seconds,0));progressions.saveAndFlush(p);
+  long count=progressions.findByInscriptionId(i.getId()).stream().filter(ProgressionChapitre::isTermine).count();
+  BigDecimal percent=ordered.isEmpty()?BigDecimal.ZERO:BigDecimal.valueOf(count*100.0/ordered.size()).setScale(2,RoundingMode.HALF_UP);
+  i.setProgression(percent);inscriptions.save(i);
+  return new ProgressResponse(formationId,chapterId,p.isTermine(),p.getPositionVideoSecondes(),percent);
+ }
+ public boolean hasFullAccess(Formation f,String email){
+  if(email==null)return false; User u=users.findByEmail(email).orElse(null); if(u==null)return false;
+  if(u.getRole()==Role.ADMIN)return true;
+  if(u.getRole()==Role.FORMATEUR)return f.getFormateur().getEmail().equalsIgnoreCase(email);
+  return inscriptions.existsByParticipantEmailAndFormationIdAndStatutIn(email,f.getId(),List.of(InscriptionStatut.ACTIVE,InscriptionStatut.CONFIRMEE));
+ }
+ private boolean isParticipantEnrolled(String email,Long id){return email!=null&&inscriptions.findByParticipantEmailAndFormationId(email,id).isPresent();}
+ private CatalogueItem item(Formation f){int chapters=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
+  return new CatalogueItem(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),f.getNiveau(),
+   f.getCategorie(),f.getPrix(),f.getFormateur().getNom(),f.getModules().size(),chapters);}
+ private PublicModule module(FormationModule m,boolean full){boolean locked=!full&&!m.isApercuGratuit();
+  return new PublicModule(m.getId(),m.getTitre(),m.getDescription(),m.getPosition(),m.isApercuGratuit(),locked,
+   m.getChapitres().stream().map(c->chapter(c,locked)).toList());}
+ private PublicChapter chapter(Chapitre c,boolean locked){return new PublicChapter(c.getId(),c.getTitre(),c.getDescription(),c.getPosition(),locked,
+  c.getRessources().stream().map(r->new PublicResource(r.getId(),r.getType(),r.getTitre(),r.getPosition(),locked,null)).toList());}
+ private String url(String key){return key==null?null:storage.temporaryUrl(key);}
+ private Formation published(Long id){return formations.findOneByIdAndStatut(id,FormationStatus.PUBLIEE).orElseThrow(this::notFound);}
+ private User user(String email){return users.findByEmail(email).orElseThrow(()->error(HttpStatus.UNAUTHORIZED,"UNAUTHORIZED","Authentification requise."));}
+ private String clean(String v){return v==null?"":v.trim();}
+ private InscriptionResponse response(Inscription i){return new InscriptionResponse(i.getId(),i.getFormation().getId(),i.getDateInscription(),i.getStatut(),i.getTypeAcces(),i.getProgression(),i.getPrixPaye(),i.getDevise(),i.getModePaiement());}
+ private BusinessException notFound(){return error(HttpStatus.NOT_FOUND,"FORMATION_NOT_FOUND","Formation ou contenu introuvable.");}
+ private BusinessException error(HttpStatus status,String code,String message){return new BusinessException(status,code,message);}
+}

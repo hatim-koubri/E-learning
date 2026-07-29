@@ -3,6 +3,8 @@ package ma.elearning.storage;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
+import io.minio.http.Method;
 import ma.elearning.common.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -14,10 +16,13 @@ import java.io.InputStream;
 public class MinioObjectStorage implements ObjectStorage {
     private final MinioClient client;
     private final String bucket;
+    private final int urlExpirySeconds;
 
-    public MinioObjectStorage(MinioClient client, @Value("${app.storage.bucket}") String bucket) {
+    public MinioObjectStorage(MinioClient client, @Value("${app.storage.bucket}") String bucket,
+                              @Value("${app.storage.url-expiry-seconds:300}") int urlExpirySeconds) {
         this.client = client;
         this.bucket = bucket;
+        this.urlExpirySeconds = urlExpirySeconds;
     }
 
     @Override
@@ -38,6 +43,17 @@ public class MinioObjectStorage implements ObjectStorage {
         } catch (Exception ex) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STORAGE_UNAVAILABLE",
                     "La suppression du fichier a échoué.");
+        }
+    }
+
+    @Override
+    public String temporaryUrl(String key) {
+        try {
+            return client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                    .method(Method.GET).bucket(bucket).object(key).expiry(urlExpirySeconds).build());
+        } catch (Exception ex) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "STORAGE_UNAVAILABLE",
+                    "Le contenu est temporairement indisponible.");
         }
     }
 }

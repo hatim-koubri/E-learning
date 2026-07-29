@@ -1,0 +1,117 @@
+package ma.elearning.quiz;
+
+import ma.elearning.api.QuizDtos.*;
+import ma.elearning.common.BusinessException;
+import ma.elearning.formation.*;
+import ma.elearning.learning.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.*;
+import java.time.*;
+import java.util.*;
+
+@Service
+public class QuizService {
+ private final QuizRepository quizzes; private final FormationRepository formations; private final InscriptionRepository inscriptions;
+ private final ProgressionChapitreRepository progressions; private final TentativeQuizRepository attempts;
+ public QuizService(QuizRepository quizzes,FormationRepository formations,InscriptionRepository inscriptions,
+  ProgressionChapitreRepository progressions,TentativeQuizRepository attempts){
+  this.quizzes=quizzes;this.formations=formations;this.inscriptions=inscriptions;this.progressions=progressions;this.attempts=attempts;
+ }
+ @Transactional(readOnly=true)
+ public List<QuizAdmin> trainerList(String email,Long formationId){
+  ownedFormation(email,formationId);return quizzes.findByFormationIdOrderByOrdre(formationId).stream().map(this::admin).toList();
+ }
+ @Transactional
+ public QuizAdmin create(String email,Long formationId,QuizRequest request){
+  Formation f=ownedFormation(email,formationId);Quiz q=new Quiz();q.setFormation(f);q.setOrdre(Math.toIntExact(quizzes.countByFormationId(formationId)));
+  apply(q,request);return admin(quizzes.saveAndFlush(q));
+ }
+ @Transactional
+ public QuizAdmin update(String email,Long id,QuizRequest request){
+  Quiz q=ownedQuiz(email,id);apply(q,request);return admin(quizzes.saveAndFlush(q));
+ }
+ @Transactional
+ public void delete(String email,Long id){quizzes.delete(ownedQuiz(email,id));}
+ @Transactional(readOnly=true)
+ public List<QuizParticipant> participantList(String email,Long formationId){
+  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+   .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Une inscription active est requise."));
+  requirePrerequisites(i);
+  return quizzes.findByFormationIdAndPublieTrueOrderByOrdre(formationId).stream().map(q->{
+   Instant since=Instant.now().minus(q.isImportant()?Duration.ofHours(24):Duration.ofHours(8));
+   long used=attempts.countByInscriptionIdAndQuizIdAndDatePassageAfter(i.getId(),q.getId(),since);
+   return participant(q,(int)Math.max(0,3-used),null);
+  }).toList();
+ }
+ @Transactional(readOnly=true)
+ public QuizParticipant open(String email,Long id){
+  Quiz q=quizzes.findByIdAndPublieTrue(id).orElseThrow(this::notFound);Inscription i=enrollment(email,q);
+  requirePrerequisites(i);Instant since=Instant.now().minus(q.isImportant()?Duration.ofHours(24):Duration.ofHours(8));
+  long used=attempts.countByInscriptionIdAndQuizIdAndDatePassageAfter(i.getId(),id,since);
+  if(used>=3)throw error(HttpStatus.TOO_MANY_REQUESTS,"ATTEMPT_LIMIT","Limite de trois tentatives atteinte pour la période.");
+  return participant(q,(int)(3-used),null);
+ }
+ @Transactional
+ public QuizResult submit(String email,Long id,Submission submission){
+  Quiz q=quizzes.findByIdAndPublieTrue(id).orElseThrow(this::notFound);Inscription i=enrollment(email,q);requirePrerequisites(i);
+  Instant since=Instant.now().minus(q.isImportant()?Duration.ofHours(24):Duration.ofHours(8));
+  if(attempts.countByInscriptionIdAndQuizIdAndDatePassageAfter(i.getId(),id,since)>=3)
+   throw error(HttpStatus.TOO_MANY_REQUESTS,"ATTEMPT_LIMIT","Limite de trois tentatives atteinte pour la période.");
+  validateSubmittedIds(q,submission);
+  BigDecimal score=BigDecimal.ZERO,max=q.getQuestions().stream().map(Question::getPoints).reduce(BigDecimal.ZERO,BigDecimal::add);
+  for(Question question:q.getQuestions()){
+   Set<Long> expected=question.getReponses().stream().filter(ReponseProposee::isCorrecte).map(ReponseProposee::getId).collect(java.util.stream.Collectors.toSet());
+   Set<Long> selected=new HashSet<>(submission.reponses().getOrDefault(question.getId(),List.of()));
+   if(selected.equals(expected))score=score.add(question.getPoints());
+  }
+  BigDecimal percent=max.signum()==0?BigDecimal.ZERO:score.multiply(BigDecimal.valueOf(100)).divide(max,2,RoundingMode.HALF_UP);
+  TentativeQuiz a=new TentativeQuiz();a.setQuiz(q);a.setInscription(i);a.submit(score,max,percent.compareTo(q.getScoreMinimal())>=0);
+  a=attempts.saveAndFlush(a);return new QuizResult(a.getId(),score,max,percent,Boolean.TRUE.equals(a.getReussi()),Instant.now());
+ }
+ private void apply(Quiz q,QuizRequest r){
+  validateConfiguration(r);q.setTitre(r.titre().trim());q.setScoreMinimal(r.scoreMinimal().setScale(2,RoundingMode.HALF_UP));
+  q.setImportant(r.important());q.setPublie(r.publie());q.getQuestions().clear();
+  r.questions().stream().sorted(Comparator.comparingInt(QuestionEdit::ordre)).forEach(qr->{
+   Question question=new Question();question.setQuiz(q);question.setLibelle(qr.libelle().trim());question.setOrdre(qr.ordre());question.setPoints(qr.points());
+   qr.reponses().stream().sorted(Comparator.comparingInt(AnswerEdit::ordre)).forEach(ar->{ReponseProposee answer=new ReponseProposee();
+    answer.setQuestion(question);answer.setLibelle(ar.libelle().trim());answer.setCorrecte(ar.correcte());answer.setOrdre(ar.ordre());question.getReponses().add(answer);});
+   q.getQuestions().add(question);
+  });
+ }
+ private void validateConfiguration(QuizRequest r){
+  Set<Integer> questionOrders=new HashSet<>();
+  for(QuestionEdit q:r.questions()){
+   if(!questionOrders.add(q.ordre())||q.reponses().size()<2||q.reponses().stream().noneMatch(AnswerEdit::correcte))
+    throw error(HttpStatus.BAD_REQUEST,"INVALID_QUIZ","Chaque question doit avoir un ordre unique, au moins deux réponses et une réponse correcte.");
+   if(q.reponses().stream().map(AnswerEdit::ordre).distinct().count()!=q.reponses().size())
+    throw error(HttpStatus.BAD_REQUEST,"INVALID_QUIZ","Les réponses doivent avoir des ordres uniques.");
+  }
+ }
+ private void validateSubmittedIds(Quiz q,Submission s){
+  Set<Long> questionIds=q.getQuestions().stream().map(Question::getId).collect(java.util.stream.Collectors.toSet());
+  if(!questionIds.containsAll(s.reponses().keySet()))throw error(HttpStatus.BAD_REQUEST,"INVALID_ANSWERS","Question inconnue.");
+  for(Question question:q.getQuestions()){
+   Set<Long> allowed=question.getReponses().stream().map(ReponseProposee::getId).collect(java.util.stream.Collectors.toSet());
+   if(!allowed.containsAll(s.reponses().getOrDefault(question.getId(),List.of())))
+    throw error(HttpStatus.BAD_REQUEST,"INVALID_ANSWERS","Réponse inconnue ou étrangère au quiz.");
+  }
+ }
+ private void requirePrerequisites(Inscription i){
+  long total=i.getFormation().getModules().stream().flatMap(m->m.getChapitres().stream()).count();
+  long done=progressions.findByInscriptionId(i.getId()).stream().filter(ProgressionChapitre::isTermine).count();
+  if(total>0&&done<total)throw error(HttpStatus.CONFLICT,"PREREQUISITES_REQUIRED","Terminez tous les chapitres avant le quiz.");
+ }
+ private Inscription enrollment(String email,Quiz q){return inscriptions.findByParticipantEmailAndFormationId(email,q.getFormation().getId())
+  .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Une inscription active est requise."));}
+ private Formation ownedFormation(String email,Long id){return formations.findByIdAndFormateurEmail(id,email).orElseThrow(this::notFound);}
+ private Quiz ownedQuiz(String email,Long id){return quizzes.findByIdAndFormationFormateurEmail(id,email).orElseThrow(this::notFound);}
+ private QuizAdmin admin(Quiz q){return new QuizAdmin(q.getId(),q.getFormation().getId(),q.getTitre(),q.getOrdre(),q.getScoreMinimal(),q.isImportant(),q.isPublie(),
+  q.getQuestions().stream().map(x->new QuestionAdmin(x.getId(),x.getLibelle(),x.getOrdre(),x.getPoints(),x.getReponses().stream().map(a->new AnswerAdmin(a.getId(),a.getLibelle(),a.isCorrecte(),a.getOrdre())).toList())).toList());}
+ private QuizParticipant participant(Quiz q,int remaining,Instant next){return new QuizParticipant(q.getId(),q.getTitre(),q.getScoreMinimal(),q.isImportant(),remaining,next,
+  q.getQuestions().stream().map(x->new QuestionParticipant(x.getId(),x.getLibelle(),x.getOrdre(),x.getPoints(),x.getReponses().stream().map(a->new AnswerParticipant(a.getId(),a.getLibelle(),a.getOrdre())).toList())).toList());}
+ private BusinessException notFound(){return error(HttpStatus.NOT_FOUND,"QUIZ_NOT_FOUND","Quiz introuvable.");}
+ private BusinessException error(HttpStatus s,String c,String m){return new BusinessException(s,c,m);}
+}

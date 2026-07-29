@@ -41,6 +41,7 @@ app:
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket: ${MINIO_BUCKET:contenus-pedagogiques}
+    url-expiry-seconds: ${MINIO_URL_EXPIRY_SECONDS:300}
   upload:
     image-max-bytes: ${UPLOAD_IMAGE_MAX_BYTES:10485760}
     pdf-max-bytes: ${UPLOAD_PDF_MAX_BYTES:52428800}

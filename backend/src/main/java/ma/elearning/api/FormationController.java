@@ -43,6 +43,12 @@ public class FormationController {
         return service.update(auth.getName(), id, request);
     }
 
+    @PutMapping("/formations/{id}/statut")
+    FormationDetail status(Authentication auth, @PathVariable Long id,
+                           @Valid @RequestBody FormationStatusRequest request) {
+        return service.changeStatus(auth.getName(), id, request.statut());
+    }
+
     @PostMapping(value = "/formations/{id}/couverture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     FormationDetail cover(Authentication auth, @PathVariable Long id,
                           @RequestPart("file") MultipartFile file) {
