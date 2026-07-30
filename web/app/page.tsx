@@ -18,6 +18,7 @@ import {
 import {useEffect, useState} from "react";
 import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
+import {GuestOnly} from "@/components/GuestOnly";
 import {PublicHeader} from "@/components/PublicHeader";
 import {ErrorState, PageSkeleton} from "@/components/ui";
 import {api} from "@/lib/api";
@@ -68,9 +69,11 @@ export default function Home() {
                 <Link className="btn btn-primary" href="/catalogue">
                   Explorer les formations <ArrowRight size={18} />
                 </Link>
-                <Link className="btn btn-secondary" href="/register/formateur">
-                  Devenir formateur
-                </Link>
+                <GuestOnly>
+                  <Link className="btn btn-secondary" href="/register/formateur">
+                    Devenir formateur
+                  </Link>
+                </GuestOnly>
               </div>
               <div className="trust-line" aria-label="Avantages">
                 <span><CheckCircle2 size={17} /> Aperçus gratuits</span>
@@ -211,9 +214,11 @@ export default function Home() {
                   vos classes depuis un espace formateur dédié.
                 </p>
               </div>
-              <Link className="btn btn-secondary" href="/register/formateur">
-                <GraduationCap size={18} /> Devenir formateur
-              </Link>
+              <GuestOnly>
+                <Link className="btn btn-secondary" href="/register/formateur">
+                  <GraduationCap size={18} /> Devenir formateur
+                </Link>
+              </GuestOnly>
             </div>
           </div>
         </section>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {Brand} from "@/components/Brand";
+import {GuestOnly} from "@/components/GuestOnly";
 
 export function Footer() {
   return (
@@ -13,7 +14,9 @@ export function Footer() {
           <h2>Explorer</h2>
           <Link href="/catalogue">Catalogue</Link>
           <Link href="/#fonctionnement">Fonctionnement</Link>
-          <Link href="/register/formateur">Devenir formateur</Link>
+          <GuestOnly>
+            <Link href="/register/formateur">Devenir formateur</Link>
+          </GuestOnly>
         </div>
         <div>
           <h2>Votre compte</h2>

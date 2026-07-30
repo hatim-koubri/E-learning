@@ -24,8 +24,19 @@ const apiMock = vi.mocked(api);
 describe("design system et accueil", () => {
   beforeEach(() => {
     apiMock.mockReset();
+    localStorage.clear();
     document.documentElement.dataset.theme = "light";
   });
+
+  function mockEmptyCatalogue() {
+    apiMock.mockResolvedValue({
+      content: [],
+      page: 0,
+      size: 3,
+      totalElements: 0,
+      totalPages: 0,
+    });
+  }
 
   it("alimente la landing avec les formations réellement publiées", async () => {
     apiMock.mockResolvedValue({
@@ -57,6 +68,42 @@ describe("design system et accueil", () => {
     apiMock.mockRejectedValue(new Error("Catalogue indisponible"));
     render(<Home />);
     expect(await screen.findByText("Catalogue indisponible")).toBeInTheDocument();
+  });
+
+  it("affiche les actions invité, dont Devenir formateur, sans session", async () => {
+    mockEmptyCatalogue();
+    render(<Home />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("link", {name: "Devenir formateur"}).length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByRole("link", {name: "Connexion"}).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", {name: "S’inscrire"}).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", {name: "Mon espace"})).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["PARTICIPANT", "/profile"],
+    ["FORMATEUR", "/formateur/formations"],
+    ["ADMIN", "/admin/formateurs"],
+  ] as const)("masque Devenir formateur pour le rôle %s", async (role, expectedHref) => {
+    mockEmptyCatalogue();
+    localStorage.setItem("user", JSON.stringify({
+      id: 1,
+      nom: "Utilisateur connecté",
+      email: "user@example.test",
+      role,
+      statut: "ACTIF",
+      createdAt: "2026-07-30T00:00:00Z",
+    }));
+
+    render(<Home />);
+    expect(screen.queryByRole("link", {name: "Devenir formateur"})).not.toBeInTheDocument();
+
+    const spaceLinks = await screen.findAllByRole("link", {name: "Mon espace"});
+    expect(spaceLinks.length).toBeGreaterThan(0);
+    spaceLinks.forEach((link) => expect(link).toHaveAttribute("href", expectedHref));
+    expect(screen.queryByRole("link", {name: "Devenir formateur"})).not.toBeInTheDocument();
   });
 
   it("gère le thème, les onglets, la pagination et la confirmation", async () => {

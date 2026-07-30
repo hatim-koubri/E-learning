@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {AuthLayout} from "@/components/AuthLayout";
 import {LoginForm} from "@/components/AuthForm";
+import {GuestOnly} from "@/components/GuestOnly";
 
 export default function Page() {
   return (
@@ -10,10 +11,12 @@ export default function Page() {
       description="Retrouvez vos cours, votre progression et vos prochaines classes."
     >
       <LoginForm />
-      <div className="auth-links" style={{marginTop: 20}}>
-        <span>Vous transmettez votre expertise ?</span>
-        <Link href="/register/formateur">Devenir formateur</Link>
-      </div>
+      <GuestOnly>
+        <div className="auth-links" style={{marginTop: 20}}>
+          <span>Vous transmettez votre expertise ?</span>
+          <Link href="/register/formateur">Devenir formateur</Link>
+        </div>
+      </GuestOnly>
     </AuthLayout>
   );
 }

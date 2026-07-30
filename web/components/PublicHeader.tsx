@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import {Menu, X} from "lucide-react";
-import {useEffect, useState} from "react";
+import {useState} from "react";
 import {Brand} from "@/components/Brand";
+import {useResolvedSession} from "@/components/GuestOnly";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import type {User} from "@/lib/api";
 
@@ -15,15 +16,7 @@ function dashboardHref(role: User["role"]) {
 
 export function PublicHeader() {
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("user") ?? "null") as User | null;
-      queueMicrotask(() => setUser(stored));
-    } catch {
-      queueMicrotask(() => setUser(null));
-    }
-  }, []);
+  const {resolved, user} = useResolvedSession();
 
   return (
     <header className="public-header">
@@ -33,9 +26,11 @@ export function PublicHeader() {
           <Link href="/" onClick={() => setOpen(false)}>Accueil</Link>
           <Link href="/catalogue" onClick={() => setOpen(false)}>Catalogue</Link>
           <Link href="/#fonctionnement" onClick={() => setOpen(false)}>Fonctionnement</Link>
-          <Link href="/register/formateur" onClick={() => setOpen(false)}>Devenir formateur</Link>
+          {resolved && !user && (
+            <Link href="/register/formateur" onClick={() => setOpen(false)}>Devenir formateur</Link>
+          )}
           <div className="mobile-nav-actions">
-            {user ? (
+            {!resolved ? null : user ? (
               <Link className="btn btn-primary" href={dashboardHref(user.role)}>Mon espace</Link>
             ) : (
               <>
@@ -47,7 +42,7 @@ export function PublicHeader() {
         </nav>
         <div className="header-actions">
           <ThemeToggle />
-          {user ? (
+          {!resolved ? null : user ? (
             <Link className="btn btn-primary desktop-action" href={dashboardHref(user.role)}>Mon espace</Link>
           ) : (
             <>
