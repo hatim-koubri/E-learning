@@ -1,3 +1,19 @@
+import Link from "next/link";
+import {AuthLayout} from "@/components/AuthLayout";
 import {LoginForm} from "@/components/AuthForm";
-export default function Page(){return <main><section className="card"><h1>Bienvenue</h1><p className="muted">Connectez-vous à votre espace E-learning.</p><LoginForm/><nav><a href="/register/formateur">Devenir formateur</a></nav></section></main>}
 
+export default function Page() {
+  return (
+    <AuthLayout
+      eyebrow="Connexion sécurisée"
+      title="Bienvenue"
+      description="Retrouvez vos cours, votre progression et vos prochaines classes."
+    >
+      <LoginForm />
+      <div className="auth-links" style={{marginTop: 20}}>
+        <span>Vous transmettez votre expertise ?</span>
+        <Link href="/register/formateur">Devenir formateur</Link>
+      </div>
+    </AuthLayout>
+  );
+}
