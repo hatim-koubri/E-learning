@@ -10,7 +10,9 @@ const apiMock=vi.mocked(api),currentMock=vi.mocked(currentUser);
 describe("quiz",()=>{
  beforeEach(()=>{apiMock.mockReset();currentMock.mockReturnValue({id:1,nom:"P",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""})});
  it("sélectionne une réponse et affiche la correction serveur",async()=>{
-  apiMock.mockResolvedValueOnce([{id:8,titre:"QCM",scoreMinimal:50,important:false,tentativesRestantes:3,questions:[{id:9,libelle:"2+2 ?",ordre:0,points:1,reponses:[{id:10,libelle:"4",ordre:0}]}]}]).mockResolvedValueOnce({pourcentage:100,reussi:true}).mockResolvedValueOnce([]);
+  apiMock.mockResolvedValueOnce([{id:8,titre:"QCM",scoreMinimal:50,important:false,tentativesRestantes:3,questions:[{id:9,libelle:"2+2 ?",ordre:0,points:1,reponses:[{id:10,libelle:"4",ordre:0}]}]}]).mockResolvedValueOnce({
+   pourcentage:100,reussi:true,feedback:[{questionId:9,libelle:"2+2 ?",correcte:true,explication:"Addition",chapitreId:null,chapitreTitre:null}],chapitresARevoir:[]
+  }).mockResolvedValueOnce([]);
   const user=userEvent.setup();render(<QuizPage/>);
   await user.click(await screen.findByLabelText("4"));
   await user.click(screen.getByRole("button",{name:"Soumettre et corriger"}));

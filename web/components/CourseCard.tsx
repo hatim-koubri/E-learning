@@ -3,6 +3,7 @@ import Link from "next/link";
 import {ArrowRight, BookOpen, Layers3, UserRound} from "lucide-react";
 import type {CatalogueItem} from "@/lib/learning";
 import {Badge} from "@/components/ui";
+import {FavoriteButton} from "@/components/FavoriteButton";
 
 export function levelLabel(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
@@ -29,6 +30,7 @@ export function CourseCard({course}: {course: CatalogueItem}) {
         </div>
         <div className="course-card-footer">
           <strong>{course.prix === 0 ? "Gratuite" : `${course.prix} DH`}</strong>
+          <FavoriteButton formationId={course.id} compact />
           <Link className="text-link" href={`/catalogue/${course.id}`}>Découvrir <ArrowRight size={16} /></Link>
         </div>
       </div>

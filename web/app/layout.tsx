@@ -1,11 +1,19 @@
 import "./globals.css";
 import type { Metadata } from "next";
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: {
     default: "NexaLearn — Formations et classes virtuelles",
     template: "%s | NexaLearn",
   },
   description: "Plateforme E-learning pour apprendre, progresser et participer à des classes virtuelles.",
+  openGraph: {
+    type: "website",
+    locale: "fr_MA",
+    siteName: "NexaLearn",
+    title: "NexaLearn — Le parcours de connaissance",
+    description: "Découvrez des formations publiées, progressez à votre rythme et participez à des classes virtuelles.",
+  },
 };
 
 const themeScript = `

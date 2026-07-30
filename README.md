@@ -1,6 +1,7 @@
 # Plateforme E-learning
 
-Socle d’une plateforme de cours en ligne : comptes participants, demandes formateurs, validation administrateur, connexion JWT et réinitialisation du mot de passe.
+Plateforme de cours en ligne avec catalogue public, apprentissage progressif, classes virtuelles,
+quiz, personnalisation et outils d’engagement fondés sur des données pédagogiques réelles.
 
 ## Prérequis
 
@@ -57,16 +58,17 @@ Les tokens de réinitialisation sont opaques, hachés en SHA-256 en base, utilis
 
 ```powershell
 cd backend
-mvn clean test
+mvn clean verify
 
 cd ../web
+npm run test:coverage
 npm run typecheck
 npm run lint
 npm run build
 ```
 
 Les PDF de conception restent inchangés. Les suivis détaillés sont dans
-`docs/sprint-1-suivi.md`, `docs/sprint-2-suivi.md` et `docs/sprint-3-suivi.md`.
+`docs/sprint-1-suivi.md` à `docs/sprint-5-suivi.md`, ainsi que `docs/web-design-suivi.md`.
 
 ## Sprint 2 - Formations et contenus
 
@@ -144,3 +146,25 @@ La mise à niveau simulée est idempotente grâce à l'en-tête `Idempotency-Key
 classes rend seulement le participant éligible : le formateur doit encore l'affecter à une classe.
 L'application Flutter conserve le JWT avec `flutter_secure_storage`, bloque les appels hors ligne et
 ouvre les ressources et réunions via des URL délivrées après contrôle du backend.
+
+## Sprint 5 - Engagement, personnalisation et acquisition
+
+L’expérience publique propose une orientation transparente sur `/orientation`. Elle recommande
+uniquement des formations publiées à partir de règles explicables (domaine, niveau et contexte
+d’apprentissage) et n’enregistre aucune réponse visiteur.
+
+Après connexion, le participant peut compléter ou ignorer l’onboarding, reprendre sa dernière
+consultation, gérer ses favoris, notes et signets privés, choisir un objectif hebdomadaire et suivre
+le « parcours de connaissance » : Découvrir → Apprendre → Pratiquer → Participer → Maîtriser.
+Seules les activités pédagogiques significatives alimentent l’objectif ; le simple temps d’ouverture
+d’une page n’est jamais comptabilisé.
+
+Les avis exigent une inscription active, au moins 30 % de progression et sont uniques par participant
+et formation. Leur moyenne, les profils formateurs, les notifications et les indicateurs du tableau
+de bord proviennent exclusivement de données réelles. Les pages privées sont exclues de l’indexation.
+Un avis signalé ou masqué disparaît du flux public, mais son auteur conserve dans sa vue authentifiée
+les actions de modification et de suppression ; la contrainte d’unicité interdit toujours un second avis.
+
+Les routes REST sont documentées automatiquement dans Swagger sous le groupe
+« Engagement et personnalisation ». Les règles, contrôles de sécurité, validations et résultats du
+sprint sont détaillés dans `docs/sprint-5-suivi.md`.

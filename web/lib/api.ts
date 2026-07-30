@@ -21,4 +21,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
 }
 export function saveSession(token:string,user:User){localStorage.setItem("access_token",token);localStorage.setItem("user",JSON.stringify(user));}
 export function logout(){localStorage.removeItem("access_token");localStorage.removeItem("user");location.href="/login";}
-export function currentUser():User|null{try{return JSON.parse(localStorage.getItem("user")??"null")}catch{return null}}
+export function currentUser():User|null{
+  if(typeof window==="undefined")return null;
+  try{return JSON.parse(localStorage.getItem("user")??"null")}catch{return null}
+}

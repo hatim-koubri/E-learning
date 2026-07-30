@@ -12,15 +12,24 @@ const course={id:4,titre:"Java",description:"Cours",langue:"fr",niveau:"DEBUTANT
 describe("achat simulé et apprentissage",()=>{
  beforeEach(()=>{apiMock.mockReset();current.mockReset();push.mockReset()});
  it("redirige vers la connexion avant l'achat",async()=>{
-  apiMock.mockResolvedValue(course);current.mockReturnValue(null);const user=userEvent.setup();render(<CourseDetail/>);
+  apiMock.mockImplementation(async(path) => path.endsWith("/avis")
+   ? {moyenne:0,nombre:0,content:[],page:0,totalPages:0}
+   : course);
+  current.mockReturnValue(null);const user=userEvent.setup();render(<CourseDetail/>);
   await user.click(await screen.findByRole("button",{name:"Simuler l’achat"}));
   expect(push).toHaveBeenCalledWith("/login");
  });
  it("inscrit, ouvre une ressource et met à jour la progression",async()=>{
   current.mockReturnValue({id:1,nom:"P",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""});
-  apiMock.mockResolvedValueOnce(course).mockResolvedValueOnce({}).mockResolvedValueOnce({...course,inscrit:true})
-   .mockResolvedValueOnce({resourceId:3,type:"YOUTUBE",url:"https://youtu.be/test",expiresInSeconds:300,telechargeable:false})
-   .mockResolvedValueOnce({pourcentage:100});
+  let enrolled=false;
+  apiMock.mockImplementation(async(path,options)=>{
+   if(path==="/catalogue/4") return {...course,inscrit:enrolled};
+   if(path==="/catalogue/4/avis") return {moyenne:0,nombre:0,content:[],page:0,totalPages:0};
+   if(path==="/participant/formations/4/inscription"){enrolled=true;return {};}
+   if(path==="/catalogue/4/ressources/3/acces") return {resourceId:3,type:"YOUTUBE",url:"https://youtu.be/test",expiresInSeconds:300,telechargeable:false};
+   if(options?.method==="PUT") return {pourcentage:100};
+   return {};
+  });
   const user=userEvent.setup();render(<CourseDetail/>);
   await user.click(await screen.findByRole("button",{name:"Simuler l’achat"}));
   await waitFor(()=>expect(apiMock).toHaveBeenCalledWith("/participant/formations/4/inscription",{method:"POST"}));

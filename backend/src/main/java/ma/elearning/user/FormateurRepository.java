@@ -7,4 +7,5 @@ import java.util.Optional;
 public interface FormateurRepository extends JpaRepository<Formateur, Long> {
     List<Formateur> findByStatutOrderByCreatedAtAsc(AccountStatus statut);
     Optional<Formateur> findByEmailAndStatut(String email, AccountStatus statut);
+    Optional<Formateur> findByIdAndStatut(Long id, AccountStatus statut);
 }

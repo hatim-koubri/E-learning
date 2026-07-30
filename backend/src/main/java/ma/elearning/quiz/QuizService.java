@@ -4,6 +4,7 @@ import ma.elearning.api.QuizDtos.*;
 import ma.elearning.common.BusinessException;
 import ma.elearning.formation.*;
 import ma.elearning.learning.*;
+import ma.elearning.engagement.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +17,10 @@ import java.util.*;
 public class QuizService {
  private final QuizRepository quizzes; private final FormationRepository formations; private final InscriptionRepository inscriptions;
  private final ProgressionChapitreRepository progressions; private final TentativeQuizRepository attempts;
+ private final EngagementService engagement;
  public QuizService(QuizRepository quizzes,FormationRepository formations,InscriptionRepository inscriptions,
-  ProgressionChapitreRepository progressions,TentativeQuizRepository attempts){
-  this.quizzes=quizzes;this.formations=formations;this.inscriptions=inscriptions;this.progressions=progressions;this.attempts=attempts;
+  ProgressionChapitreRepository progressions,TentativeQuizRepository attempts,EngagementService engagement){
+  this.quizzes=quizzes;this.formations=formations;this.inscriptions=inscriptions;this.progressions=progressions;this.attempts=attempts;this.engagement=engagement;
  }
  @Transactional(readOnly=true)
  public List<QuizAdmin> trainerList(String email,Long formationId){
@@ -27,7 +29,9 @@ public class QuizService {
  @Transactional
  public QuizAdmin create(String email,Long formationId,QuizRequest request){
   Formation f=ownedFormation(email,formationId);Quiz q=new Quiz();q.setFormation(f);q.setOrdre(Math.toIntExact(quizzes.countByFormationId(formationId)));
-  apply(q,request);return admin(quizzes.saveAndFlush(q));
+  apply(q,request);q=quizzes.saveAndFlush(q);
+  if(q.isPublie())engagement.notifyFormationParticipants(f,NotificationCategory.QUIZ,"Nouveau quiz disponible","Le quiz "+q.getTitre()+" est disponible dans "+f.getTitre()+".","/apprentissage/"+f.getId()+"/quiz");
+  return admin(q);
  }
  @Transactional
  public QuizAdmin update(String email,Long id,QuizRequest request){
@@ -62,20 +66,25 @@ public class QuizService {
    throw error(HttpStatus.TOO_MANY_REQUESTS,"ATTEMPT_LIMIT","Limite de trois tentatives atteinte pour la période.");
   validateSubmittedIds(q,submission);
   BigDecimal score=BigDecimal.ZERO,max=q.getQuestions().stream().map(Question::getPoints).reduce(BigDecimal.ZERO,BigDecimal::add);
+  List<QuestionFeedback> feedback=new ArrayList<>();
   for(Question question:q.getQuestions()){
    Set<Long> expected=question.getReponses().stream().filter(ReponseProposee::isCorrecte).map(ReponseProposee::getId).collect(java.util.stream.Collectors.toSet());
    Set<Long> selected=new HashSet<>(submission.reponses().getOrDefault(question.getId(),List.of()));
-   if(selected.equals(expected))score=score.add(question.getPoints());
+   boolean correct=selected.equals(expected);if(correct)score=score.add(question.getPoints());
+   feedback.add(new QuestionFeedback(question.getId(),correct,question.getExplication()));
   }
   BigDecimal percent=max.signum()==0?BigDecimal.ZERO:score.multiply(BigDecimal.valueOf(100)).divide(max,2,RoundingMode.HALF_UP);
   TentativeQuiz a=new TentativeQuiz();a.setQuiz(q);a.setInscription(i);a.submit(score,max,percent.compareTo(q.getScoreMinimal())>=0);
-  a=attempts.saveAndFlush(a);return new QuizResult(a.getId(),score,max,percent,Boolean.TRUE.equals(a.getReussi()),Instant.now());
+  a=attempts.saveAndFlush(a);engagement.recordActivity(email,q.getFormation().getId(),ActivityType.QUIZ_SOUMIS,"quiz-attempt:"+a.getId(),10);
+  List<ReviewChapter> reviewChapters=Boolean.TRUE.equals(a.getReussi())?List.of():q.getFormation().getModules().stream()
+   .flatMap(module->module.getChapitres().stream()).limit(3).map(chapter->new ReviewChapter(chapter.getId(),chapter.getTitre())).toList();
+  return new QuizResult(a.getId(),score,max,percent,Boolean.TRUE.equals(a.getReussi()),Instant.now(),feedback,reviewChapters);
  }
  private void apply(Quiz q,QuizRequest r){
   validateConfiguration(r);q.setTitre(r.titre().trim());q.setScoreMinimal(r.scoreMinimal().setScale(2,RoundingMode.HALF_UP));
   q.setImportant(r.important());q.setPublie(r.publie());q.getQuestions().clear();
   r.questions().stream().sorted(Comparator.comparingInt(QuestionEdit::ordre)).forEach(qr->{
-   Question question=new Question();question.setQuiz(q);question.setLibelle(qr.libelle().trim());question.setOrdre(qr.ordre());question.setPoints(qr.points());
+   Question question=new Question();question.setQuiz(q);question.setLibelle(qr.libelle().trim());question.setExplication(qr.explication()==null||qr.explication().isBlank()?null:qr.explication().trim());question.setOrdre(qr.ordre());question.setPoints(qr.points());
    qr.reponses().stream().sorted(Comparator.comparingInt(AnswerEdit::ordre)).forEach(ar->{ReponseProposee answer=new ReponseProposee();
     answer.setQuestion(question);answer.setLibelle(ar.libelle().trim());answer.setCorrecte(ar.correcte());answer.setOrdre(ar.ordre());question.getReponses().add(answer);});
    q.getQuestions().add(question);
@@ -109,7 +118,7 @@ public class QuizService {
  private Formation ownedFormation(String email,Long id){return formations.findByIdAndFormateurEmail(id,email).orElseThrow(this::notFound);}
  private Quiz ownedQuiz(String email,Long id){return quizzes.findByIdAndFormationFormateurEmail(id,email).orElseThrow(this::notFound);}
  private QuizAdmin admin(Quiz q){return new QuizAdmin(q.getId(),q.getFormation().getId(),q.getTitre(),q.getOrdre(),q.getScoreMinimal(),q.isImportant(),q.isPublie(),
-  q.getQuestions().stream().map(x->new QuestionAdmin(x.getId(),x.getLibelle(),x.getOrdre(),x.getPoints(),x.getReponses().stream().map(a->new AnswerAdmin(a.getId(),a.getLibelle(),a.isCorrecte(),a.getOrdre())).toList())).toList());}
+  q.getQuestions().stream().map(x->new QuestionAdmin(x.getId(),x.getLibelle(),x.getExplication(),x.getOrdre(),x.getPoints(),x.getReponses().stream().map(a->new AnswerAdmin(a.getId(),a.getLibelle(),a.isCorrecte(),a.getOrdre())).toList())).toList());}
  private QuizParticipant participant(Quiz q,int remaining,Instant next){return new QuizParticipant(q.getId(),q.getTitre(),q.getScoreMinimal(),q.isImportant(),remaining,next,
   q.getQuestions().stream().map(x->new QuestionParticipant(x.getId(),x.getLibelle(),x.getOrdre(),x.getPoints(),x.getReponses().stream().map(a->new AnswerParticipant(a.getId(),a.getLibelle(),a.getOrdre())).toList())).toList());}
  private BusinessException notFound(){return error(HttpStatus.NOT_FOUND,"QUIZ_NOT_FOUND","Quiz introuvable.");}

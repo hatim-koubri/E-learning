@@ -1,9 +1,11 @@
 package ma.elearning.learning;
 
 import ma.elearning.api.LearningDtos.*;
+import ma.elearning.api.EngagementDtos.LearningPositionRequest;
 import ma.elearning.common.BusinessException;
 import ma.elearning.formation.*;
 import ma.elearning.storage.ObjectStorage;
+import ma.elearning.engagement.*;
 import ma.elearning.user.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,12 +24,14 @@ public class LearningService {
  private final ProgressionChapitreRepository progressions; private final UserRepository users;
  private final ObjectStorage storage; private final int expiry;
  private final OperationAccesRepository operations;
+ private final EngagementService engagement;
  public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
   InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
-  @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations){
+  @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations,EngagementService engagement){
   this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
   this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
   this.operations=operations;
+  this.engagement=engagement;
  }
  @Transactional
  public UpgradeResponse upgrade(String email,Long formationId,String key){
@@ -76,7 +80,7 @@ public class LearningService {
   Formation f=published(id); boolean full=hasFullAccess(f,email);
   int chapterCount=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
   return new CatalogueDetail(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),
-   f.getNiveau(),f.getCategorie(),f.getPrix(),"DH",f.getFormateur().getNom(),f.getModules().size(),chapterCount,
+   f.getNiveau(),f.getCategorie(),f.getPrix(),"DH",f.getFormateur().getId(),f.getFormateur().getNom(),f.getModules().size(),chapterCount,
    isParticipantEnrolled(email,id),f.getModules().stream().map(m->module(m,full)).toList());
  }
  @Transactional
@@ -92,7 +96,7 @@ public class LearningService {
    return inscriptions.findByParticipantEmailAndFormationId(email,formationId).map(this::response).orElseThrow(()->ex);
   }
  }
- @Transactional(readOnly=true)
+ @Transactional
  public ResourceAccess resource(String email,Long formationId,Long resourceId){
   Formation f=published(formationId);
   RessourcePedagogique r=ressources.findById(resourceId).orElseThrow(this::notFound);
@@ -100,6 +104,7 @@ public class LearningService {
   boolean preview=r.getChapitre().getModule().isApercuGratuit();
   if(!preview&&!hasFullAccess(f,email))throw error(HttpStatus.FORBIDDEN,"CONTENT_LOCKED","Une inscription active est requise.");
   String accessUrl=r.getType()==ResourceType.YOUTUBE?r.getUrlYoutube():storage.temporaryUrl(r.getCleStockage());
+  if(email!=null&&isParticipantEnrolled(email,formationId))engagement.recordResourceConsultation(email,formationId,r);
   return new ResourceAccess(r.getId(),r.getType(),accessUrl,expiry,false);
  }
  @Transactional
@@ -121,6 +126,8 @@ public class LearningService {
   long count=progressions.findByInscriptionId(i.getId()).stream().filter(ProgressionChapitre::isTermine).count();
   BigDecimal percent=ordered.isEmpty()?BigDecimal.ZERO:BigDecimal.valueOf(count*100.0/ordered.size()).setScale(2,RoundingMode.HALF_UP);
   i.setProgression(percent);inscriptions.save(i);
+  engagement.recordPosition(email,formationId,new LearningPositionRequest(chapter.getModule().getId(),chapterId,null));
+  if(completed)engagement.recordActivity(email,formationId,ActivityType.CHAPITRE_TERMINE,"chapter:"+chapterId,10);
   return new ProgressResponse(formationId,chapterId,p.isTermine(),p.getPositionVideoSecondes(),percent);
  }
  public boolean hasFullAccess(Formation f,String email){

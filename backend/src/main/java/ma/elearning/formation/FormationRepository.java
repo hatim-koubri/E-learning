@@ -16,4 +16,8 @@ public interface FormationRepository extends JpaRepository<Formation, Long> {
             "and (:niveau is null or f.niveau = :niveau)")
     Page<Formation> catalogue(String q, String categorie, String langue, NiveauFormation niveau, Pageable pageable);
     Optional<Formation> findOneByIdAndStatut(Long id, FormationStatus statut);
+    @EntityGraph(attributePaths = {"formateur"})
+    List<Formation> findByStatutOrderByUpdatedAtDesc(FormationStatus statut);
+    @EntityGraph(attributePaths = {"formateur"})
+    List<Formation> findByFormateurIdAndStatutOrderByUpdatedAtDesc(Long formateurId, FormationStatus statut);
 }

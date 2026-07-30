@@ -17,7 +17,7 @@ import {
 } from "@/components/ui";
 import {api} from "@/lib/api";
 
-vi.mock("@/lib/api", () => ({api: vi.fn()}));
+vi.mock("@/lib/api", () => ({api: vi.fn(), currentUser: vi.fn(() => null)}));
 vi.mock("next/image", () => ({default: () => <span data-testid="next-image" />}));
 const apiMock = vi.mocked(api);
 
@@ -60,7 +60,7 @@ describe("design system et accueil", () => {
     render(<Home />);
     expect(screen.getByRole("heading", {name: /Développez vos compétences/})).toBeInTheDocument();
     expect(await screen.findByText("Architecture React")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", {name: /Explorer les formations/}).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", {name: "Explorer le catalogue"})).toHaveAttribute("href", "/catalogue");
     expect(apiMock).toHaveBeenCalledWith("/catalogue?page=0&size=3");
   });
 

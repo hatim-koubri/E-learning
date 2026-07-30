@@ -3,162 +3,220 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Bell,
+  BookMarked,
   BookOpen,
   CalendarDays,
   CheckCircle2,
-  ClipboardCheck,
-  GraduationCap,
+  Clock3,
+  Heart,
   LogOut,
+  NotebookPen,
+  SlidersHorizontal,
+  Target,
   TrendingUp,
 } from "lucide-react";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useState} from "react";
 import {AppShell} from "@/components/AppShell";
+import {KnowledgePath} from "@/components/KnowledgePath";
 import {PageHeader} from "@/components/PageHeader";
 import {Protected} from "@/components/Protected";
 import {Badge, Button, Card, EmptyState, ErrorState, ProgressBar, Skeleton} from "@/components/ui";
 import {api, currentUser, logout, type User} from "@/lib/api";
-import type {Classe} from "@/lib/classes";
-import type {MyFormation} from "@/lib/learning";
+import type {Dashboard, WeeklyGoal} from "@/lib/engagement";
 
-export default function Page() {
+export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
-  const [formations, setFormations] = useState<MyFormation[]>([]);
-  const [classes, setClasses] = useState<Classe[]>([]);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [goalBusy, setGoalBusy] = useState(false);
   const sessionUser = currentUser();
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError("");
-      try {
-        const me = await api<User>("/auth/me");
-        setUser(me);
-        if (me.role === "PARTICIPANT") {
-          const [myFormations, myClasses] = await Promise.all([
-            api<MyFormation[]>("/participant/formations"),
-            api<Classe[]>("/participant/classes"),
-          ]);
-          setFormations(Array.isArray(myFormations) ? myFormations : []);
-          setClasses(Array.isArray(myClasses) ? myClasses : []);
-        }
-      } catch (reason) {
-        setError((reason as Error).message);
-      } finally {
-        setLoading(false);
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const me = await api<User>("/auth/me");
+      setUser(me);
+      if (me.role === "PARTICIPANT") {
+        setDashboard(await api<Dashboard>("/participant/tableau-de-bord"));
       }
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, []);
+  }
 
-  const nextSession = useMemo(() => {
-    return classes
-      .flatMap((item) => item.seances.map((session) => ({...session, classe: item.nom, formation: item.formation})))
-      .filter((session) => session.statut === "PLANIFIEE")
-      .sort((a, b) => new Date(a.dateDebut).getTime() - new Date(b.dateDebut).getTime())[0];
-  }, [classes]);
+  useEffect(() => { queueMicrotask(load); }, []);
 
-  const averageProgress = formations.length
-    ? Math.round(formations.reduce((sum, item) => sum + Number(item.progression), 0) / formations.length)
-    : 0;
+  async function updateGoal(minutesCible: number) {
+    setGoalBusy(true);
+    try {
+      const goal = await api<WeeklyGoal>("/participant/objectif-hebdomadaire", {
+        method: "PUT",
+        body: JSON.stringify({
+          minutesCible,
+          fuseauHoraire: Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Casablanca",
+        }),
+      });
+      setDashboard((current) => current ? {...current, objectifHebdomadaire: goal} : current);
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setGoalBusy(false);
+    }
+  }
+
   const role = user?.role ?? sessionUser?.role ?? "PARTICIPANT";
+  const stage = dashboard ? Math.min(4, Math.floor(dashboard.progressionGlobale / 25)) : 0;
 
   return (
     <Protected>
       <AppShell role={role}>
         {loading ? (
-          <div className="stack" role="status">
-            <Skeleton className="skeleton-line medium" />
-            <Skeleton className="skeleton-cover" />
-          </div>
-        ) : error ? (
-          <ErrorState message={error} />
-        ) : user && user.role === "PARTICIPANT" ? (
+          <div className="stack" role="status"><Skeleton className="skeleton-line medium" /><Skeleton className="skeleton-cover" /></div>
+        ) : error && !user ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : user?.role === "PARTICIPANT" && dashboard ? (
           <>
             <PageHeader
-              eyebrow="Tableau de bord participant"
+              eyebrow="Aujourd’hui"
               title={`Bonjour, ${user.nom}`}
-              description="Reprenez une formation, consultez votre progression ou préparez votre prochaine classe."
-              actions={<Button variant="secondary" onClick={logout}><LogOut size={17} /> Se déconnecter</Button>}
+              description={dashboard.prochaineAction}
+              actions={
+                <>
+                  <Link className="btn btn-secondary" href="/notifications"><Bell size={17} /> Notifications</Link>
+                  <Button variant="ghost" onClick={logout}><LogOut size={17} /> Déconnexion</Button>
+                </>
+              }
             />
-            <section className="profile-hero surface-card">
-              <span className="profile-avatar">{user.nom.slice(0, 1).toUpperCase()}</span>
-              <div>
-                <h1>{user.nom}</h1>
-                <p>{user.email}{user.telephone ? ` · ${user.telephone}` : ""}</p>
+            {error && <div style={{marginBottom: 18}}><ErrorState message={error} onRetry={load} /></div>}
+            <Card className="today-card">
+              <div className="today-copy">
+                <span className="eyebrow">Votre prochaine étape</span>
+                {dashboard.reprise ? (
+                  <>
+                    <h2>{dashboard.reprise.chapitreTitre || dashboard.reprise.formationTitre}</h2>
+                    <p>{dashboard.reprise.formationTitre}{dashboard.reprise.moduleTitre ? ` · ${dashboard.reprise.moduleTitre}` : ""}</p>
+                    <Link className="btn btn-primary" href={dashboard.reprise.href}>
+                      Reprendre là où j’en étais <ArrowRight size={17} />
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <h2>Choisissez votre première étape</h2>
+                    <p>Une formation inscrite apparaîtra ici dès votre première consultation.</p>
+                    <Link className="btn btn-primary" href="/catalogue">Explorer le catalogue</Link>
+                  </>
+                )}
               </div>
-              <Badge variant="success">{user.statut}</Badge>
-            </section>
+              <div className="today-path"><KnowledgePath active={stage} compact /></div>
+            </Card>
 
             <div className="stats-grid">
-              <Card className="stat-card">
-                <span className="stat-icon"><BookOpen size={21} /></span>
-                <div><small>Formations inscrites</small><strong>{formations.length}</strong></div>
-              </Card>
-              <Card className="stat-card">
-                <span className="stat-icon success"><TrendingUp size={21} /></span>
-                <div><small>Progression moyenne</small><strong>{averageProgress}%</strong></div>
-              </Card>
-              <Card className="stat-card">
-                <span className="stat-icon warning"><CalendarDays size={21} /></span>
-                <div><small>Classes affectées</small><strong>{classes.length}</strong></div>
-              </Card>
-              <Card className="stat-card">
-                <span className="stat-icon"><ClipboardCheck size={21} /></span>
-                <div><small>Accès aux QCM</small><strong>{formations.length ? "Disponible" : "—"}</strong></div>
-              </Card>
+              <Card className="stat-card"><span className="stat-icon"><BookOpen size={21} /></span><div><small>Formations</small><strong>{dashboard.formations.length}</strong></div></Card>
+              <Card className="stat-card"><span className="stat-icon success"><TrendingUp size={21} /></span><div><small>Progression globale</small><strong>{dashboard.progressionGlobale}%</strong></div></Card>
+              <Card className="stat-card"><span className="stat-icon warning"><CheckCircle2 size={21} /></span><div><small>Quiz disponibles</small><strong>{dashboard.quizDisponibles}</strong></div></Card>
+              <Card className="stat-card"><span className="stat-icon"><Heart size={21} /></span><div><small>Favoris</small><strong>{dashboard.favoris.length}</strong></div></Card>
             </div>
 
             <div className="dashboard-grid">
-              <Card>
-                <div className="panel-heading">
-                  <div><h2>Mes apprentissages</h2><p>Vos inscriptions et leur progression enregistrée.</p></div>
-                  <Link className="text-link" href="/catalogue">Explorer <ArrowRight size={16} /></Link>
-                </div>
-                {formations.length ? (
-                  <div className="learning-list">
-                    {formations.map((formation) => (
-                      <article className="learning-row" key={formation.inscriptionId}>
-                        <div>
-                          <h3>{formation.titre}</h3>
-                          <p>{formation.typeAcces === "CONTENU_ET_CLASSES" ? "Contenu et classes" : "Contenu"} · {formation.statut}</p>
-                        </div>
-                        <ProgressBar value={Number(formation.progression)} />
-                        <Link className="btn btn-secondary" href={`/catalogue/${formation.formationId}`}>
-                          Continuer <ArrowRight size={16} />
-                        </Link>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    title="Aucune formation inscrite"
-                    description="Explorez le catalogue et ouvrez l’aperçu d’une formation avant de vous inscrire."
-                    action={<Link className="btn btn-primary" href="/catalogue">Explorer le catalogue</Link>}
-                  />
-                )}
-              </Card>
               <div className="stack">
                 <Card>
-                  <div className="panel-heading"><div><h2>Prochaine classe</h2><p>Votre prochaine séance planifiée.</p></div></div>
-                  {nextSession ? (
-                    <div className="stack">
-                      <Badge variant="warning">Planifiée</Badge>
-                      <div><strong>{nextSession.titre}</strong><p>{nextSession.formation} · {nextSession.classe}</p></div>
-                      <span className="session-date"><CalendarDays size={16} /> {new Date(nextSession.dateDebut).toLocaleString("fr-FR")}</span>
-                      <Link className="btn btn-primary" href="/participant/classes">Voir mes classes</Link>
+                  <div className="panel-heading">
+                    <div><h2>Objectif hebdomadaire</h2><p>{dashboard.objectifHebdomadaire.message}</p></div>
+                    <Target size={23} />
+                  </div>
+                  <ProgressBar
+                    value={dashboard.objectifHebdomadaire.pourcentage}
+                    label={`${dashboard.objectifHebdomadaire.minutesValidees} sur ${dashboard.objectifHebdomadaire.minutesCible} minutes validées`}
+                  />
+                  <div className="goal-meta">
+                    <span><Clock3 size={16} /> {dashboard.objectifHebdomadaire.activitesValidees} activité(s) significative(s)</span>
+                    <span>{dashboard.objectifHebdomadaire.semainesRegulieres} semaine(s) régulière(s)</span>
+                  </div>
+                  <label className="goal-select">
+                    Ajuster mon objectif
+                    <select
+                      disabled={goalBusy}
+                      value={dashboard.objectifHebdomadaire.minutesCible}
+                      onChange={(event) => updateGoal(Number(event.target.value))}
+                    >
+                      <option value={30}>30 minutes</option><option value={60}>1 heure</option>
+                      <option value={120}>2 heures</option><option value={180}>3 heures</option>
+                    </select>
+                  </label>
+                </Card>
+                <Card>
+                  <div className="panel-heading"><div><h2>Mes apprentissages</h2><p>Progression calculée à partir des chapitres terminés.</p></div></div>
+                  {dashboard.formations.length ? (
+                    <div className="learning-list">
+                      {dashboard.formations.map((formation) => (
+                        <article className="learning-row" key={formation.formationId}>
+                          <div><h3>{formation.titre}</h3><p>{formation.typeAcces === "CONTENU_ET_CLASSES" ? "Contenu et classes" : "Contenu"}</p></div>
+                          <ProgressBar value={Number(formation.progression)} />
+                          <Link className="btn btn-secondary" href={`/apprentissage/${formation.formationId}`}>
+                            Ouvrir le parcours <ArrowRight size={16} />
+                          </Link>
+                        </article>
+                      ))}
                     </div>
                   ) : (
-                    <p>Aucune séance à venir ne vous est actuellement affectée.</p>
+                    <EmptyState title="Aucun apprentissage en cours" description="Explorez une formation publiée pour commencer." action={<Link className="btn btn-primary" href="/catalogue">Explorer</Link>} />
                   )}
                 </Card>
                 <Card>
-                  <div className="panel-heading"><div><h2>Actions rapides</h2></div></div>
+                  <div className="panel-heading"><div><h2>Recommandations expliquées</h2><p>Des règles simples fondées sur vos choix et votre historique.</p></div></div>
+                  {dashboard.recommandations.length ? (
+                    <div className="recommendation-list">
+                      {dashboard.recommandations.slice(0, 4).map((item) => (
+                        <article key={item.formationId}>
+                          <div><Badge variant="primary">{item.categorie}</Badge><h3>{item.titre}</h3><p>{item.raisons.join(" · ")}</p></div>
+                          <Link className="btn btn-secondary" href={`/catalogue/${item.formationId}`}>Découvrir</Link>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p>Complétez vos préférences pour recevoir des suggestions pertinentes.</p>}
+                </Card>
+              </div>
+              <div className="stack">
+                <Card>
+                  <div className="panel-heading"><div><h2>Prochaine classe</h2><p>Uniquement les séances auxquelles vous êtes affecté.</p></div><CalendarDays size={22} /></div>
+                  {dashboard.prochaineClasse ? (
+                    <div className="stack">
+                      <Badge variant="warning">Planifiée</Badge>
+                      <strong>{dashboard.prochaineClasse.titre}</strong>
+                      <p>{dashboard.prochaineClasse.formation}</p>
+                      <span className="session-date"><CalendarDays size={16} /> {new Date(dashboard.prochaineClasse.dateDebut).toLocaleString("fr-FR")}</span>
+                      <Link className="btn btn-primary" href="/participant/classes">Voir mes classes</Link>
+                    </div>
+                  ) : <p>Aucune séance à venir ne vous est actuellement affectée.</p>}
+                </Card>
+                <Card>
+                  <div className="panel-heading"><div><h2>Favoris</h2></div><Heart size={21} /></div>
+                  {dashboard.favoris.length ? (
+                    <div className="compact-list">
+                      {dashboard.favoris.slice(0, 4).map((item) => <Link href={`/catalogue/${item.formationId}`} key={item.id}>{item.titre}<ArrowRight size={15} /></Link>)}
+                    </div>
+                  ) : <p>Ajoutez des formations depuis le catalogue pour les retrouver ici.</p>}
+                </Card>
+                <Card>
+                  <div className="panel-heading"><div><h2>Activité récente</h2></div></div>
+                  {dashboard.activiteRecente.length ? (
+                    <ol className="activity-list">
+                      {dashboard.activiteRecente.slice(0, 6).map((item, index) => (
+                        <li key={`${item.occurredAt}-${index}`}><span /><div><strong>{item.type.toLowerCase().replaceAll("_", " ")}</strong><small>{item.formation || "Activité pédagogique"} · {new Date(item.occurredAt).toLocaleDateString("fr-FR")}</small></div></li>
+                      ))}
+                    </ol>
+                  ) : <p>Votre activité apparaîtra après un chapitre, une ressource, un quiz ou une classe validée.</p>}
+                </Card>
+                <Card>
                   <div className="quick-actions">
-                    <Link href="/catalogue"><GraduationCap size={18} /> Trouver une formation</Link>
-                    <Link href="/participant/classes"><CalendarDays size={18} /> Consulter mes classes</Link>
-                    {formations[0] && <Link href={`/apprentissage/${formations[0].formationId}/quiz`}><CheckCircle2 size={18} /> Ouvrir les QCM</Link>}
+                    <Link href="/participant/notes"><NotebookPen size={18} /> Mes notes et signets</Link>
+                    <Link href="/catalogue?favoris=1"><BookMarked size={18} /> Mes formations favorites</Link>
+                    <Link href="/participant/onboarding"><SlidersHorizontal size={18} /> Modifier mes préférences</Link>
                   </div>
                 </Card>
               </div>
@@ -166,17 +224,8 @@ export default function Page() {
           </>
         ) : user ? (
           <>
-            <PageHeader
-              eyebrow="Mon compte"
-              title={user.nom}
-              description="Consultez les informations associées à votre session."
-              actions={<Button variant="secondary" onClick={logout}><LogOut size={17} /> Se déconnecter</Button>}
-            />
-            <Card className="profile-hero">
-              <span className="profile-avatar">{user.nom.slice(0, 1).toUpperCase()}</span>
-              <div><h1>{user.nom}</h1><p>{user.email}</p></div>
-              <Badge>{user.role}</Badge>
-            </Card>
+            <PageHeader eyebrow="Mon compte" title={user.nom} description="Consultez les informations associées à votre session." actions={<Button variant="secondary" onClick={logout}><LogOut size={17} /> Se déconnecter</Button>} />
+            <Card className="profile-hero"><span className="profile-avatar">{user.nom.slice(0, 1).toUpperCase()}</span><div><h1>{user.nom}</h1><p>{user.email}</p></div><Badge>{user.role}</Badge></Card>
           </>
         ) : null}
       </AppShell>

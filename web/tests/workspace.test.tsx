@@ -28,8 +28,14 @@ describe("espaces applicatifs",()=>{
  });
  it("charge le profil et permet la déconnexion",async()=>{
   userMock.mockReturnValue({id:2,nom:"Pat",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""});
-  apiMock.mockResolvedValue({id:2,nom:"Pat",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""});
-  const user=userEvent.setup();render(<ProfilePage/>);expect(await screen.findByText("Pat")).toBeInTheDocument();await user.click(screen.getByRole("button",{name:"Se déconnecter"}));expect(logout).toHaveBeenCalled();
+  apiMock.mockImplementation(async(path) => path === "/auth/me"
+   ? {id:2,nom:"Pat",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""}
+   : {
+     prochaineAction:"Choisissez une formation pour commencer.",progressionGlobale:0,reprise:null,
+     objectifHebdomadaire:{minutesCible:60,minutesValidees:0,activitesValidees:0,pourcentage:0,semainesRegulieres:0,message:"Chaque étape compte."},
+     prochaineClasse:null,quizDisponibles:0,formations:[],favoris:[],recommandations:[],activiteRecente:[]
+    });
+  const user=userEvent.setup();render(<ProfilePage/>);expect(await screen.findByRole("heading",{name:"Bonjour, Pat"})).toBeInTheDocument();await user.click(screen.getByRole("button",{name:"Déconnexion"}));expect(logout).toHaveBeenCalled();
  });
  it("affiche et crée une formation",async()=>{
   userMock.mockReturnValue({id:4,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
