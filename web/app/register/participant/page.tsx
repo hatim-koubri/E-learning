@@ -1,3 +1,14 @@
+import {AuthLayout} from "@/components/AuthLayout";
 import {RegisterForm} from "@/components/AuthForm";
-export default function Page(){return <main><section className="card"><h1>Créer un compte</h1><p className="muted">Inscription participant immédiate.</p><RegisterForm kind="participant"/></section></main>}
 
+export default function Page() {
+  return (
+    <AuthLayout
+      eyebrow="Inscription participant"
+      title="Créez votre espace d’apprentissage"
+      description="Inscrivez-vous gratuitement pour suivre vos formations et vos résultats."
+    >
+      <RegisterForm kind="participant" />
+    </AuthLayout>
+  );
+}

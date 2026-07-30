@@ -7,3 +7,13 @@ export type PublicModule={id:number;titre:string;description?:string;ordre:numbe
 export type CatalogueDetail=CatalogueItem&{devise:string;inscrit:boolean;modules:PublicModule[]};
 export type ResourceAccess={resourceId:number;type:ResourceType;url:string;expiresInSeconds:number;telechargeable:boolean};
 export type QuizParticipant={id:number;titre:string;scoreMinimal:number;important:boolean;tentativesRestantes:number;questions:{id:number;libelle:string;ordre:number;points:number;reponses:{id:number;libelle:string;ordre:number}[]}[]};
+export type MyFormation={
+  inscriptionId:number;
+  formationId:number;
+  titre:string;
+  typeAcces:"CONTENU"|"CONTENU_ET_CLASSES";
+  statut:string;
+  progression:number;
+  prixPaye:number;
+  devise:string;
+};
