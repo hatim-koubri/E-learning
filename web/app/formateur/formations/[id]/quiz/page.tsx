@@ -16,11 +16,12 @@ type Quiz = {
   scoreMinimal: number;
   important: boolean;
   publie: boolean;
-  questions: {id: number; libelle: string; points: number; reponses: {id: number; libelle: string; correcte: boolean}[]}[];
+  questions: {id: number; libelle: string; explication?: string; points: number; reponses: {id: number; libelle: string; correcte: boolean}[]}[];
 };
-type DraftQuestion = {libelle: string; points: number; reponses: {libelle: string; correcte: boolean}[]};
+type DraftQuestion = {libelle: string; explication: string; points: number; reponses: {libelle: string; correcte: boolean}[]};
 const blank = (): DraftQuestion => ({
   libelle: "",
+  explication: "",
   points: 1,
   reponses: [{libelle: "", correcte: true}, {libelle: "", correcte: false}],
 });
@@ -137,6 +138,12 @@ export default function QuizEditor() {
                     onChange={(event) => patchQuestion(questionIndex, {libelle: event.target.value})}
                     placeholder="Énoncé"
                     required
+                  />
+                  <textarea
+                    value={question.explication}
+                    onChange={(event) => patchQuestion(questionIndex, {explication: event.target.value})}
+                    placeholder="Explication pédagogique affichée uniquement après la soumission (facultatif)"
+                    maxLength={5000}
                   />
                   <label>Points<input type="number" min=".01" step=".01" value={question.points} onChange={(event) => patchQuestion(questionIndex, {points: Number(event.target.value)})} /></label>
                   {question.reponses.map((answer, answerIndex) => (

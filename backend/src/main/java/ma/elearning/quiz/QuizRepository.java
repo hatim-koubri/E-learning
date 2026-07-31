@@ -8,4 +8,5 @@ public interface QuizRepository extends JpaRepository<Quiz,Long>{
  Optional<Quiz> findByIdAndPublieTrue(Long id);
  List<Quiz> findByFormationIdAndPublieTrueOrderByOrdre(Long formationId);
  long countByFormationId(Long formationId);
+ long countByFormationIdAndPublieTrue(Long formationId);
 }

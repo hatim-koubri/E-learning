@@ -6,6 +6,7 @@ import ma.elearning.common.BusinessException;
 import ma.elearning.storage.ObjectStorage;
 import ma.elearning.storage.UploadValidator;
 import ma.elearning.storage.UploadValidator.ValidatedFile;
+import ma.elearning.engagement.*;
 import ma.elearning.user.AccountStatus;
 import ma.elearning.user.Formateur;
 import ma.elearning.user.FormateurRepository;
@@ -36,10 +37,12 @@ public class FormationService {
     private final FormateurRepository formateurs;
     private final ObjectStorage storage;
     private final UploadValidator uploads;
+    private final EngagementService engagement;
 
     public FormationService(FormationRepository formations, FormationModuleRepository modules,
                             ChapitreRepository chapitres, RessourceRepository ressources,
-                            FormateurRepository formateurs, ObjectStorage storage, UploadValidator uploads) {
+                            FormateurRepository formateurs, ObjectStorage storage, UploadValidator uploads,
+                            EngagementService engagement) {
         this.formations = formations;
         this.modules = modules;
         this.chapitres = chapitres;
@@ -47,6 +50,7 @@ public class FormationService {
         this.formateurs = formateurs;
         this.storage = storage;
         this.uploads = uploads;
+        this.engagement = engagement;
     }
 
     @Transactional
@@ -114,7 +118,13 @@ public class FormationService {
         module.setFormation(formation);
         apply(module, request);
         module.setPosition(Math.toIntExact(count));
-        return FormationMapper.toModule(modules.saveAndFlush(module));
+        ModuleResponse response = FormationMapper.toModule(modules.saveAndFlush(module));
+        if (formation.getStatut() == FormationStatus.PUBLIEE) {
+            engagement.notifyFormationParticipants(formation, NotificationCategory.NOUVEAU_CONTENU,
+                    "Nouveau module disponible", "Le module " + module.getTitre() + " a été ajouté à " + formation.getTitre() + ".",
+                    "/catalogue/" + formation.getId());
+        }
+        return response;
     }
 
     @Transactional

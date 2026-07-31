@@ -25,6 +25,7 @@ export function PublicHeader() {
         <nav className={open ? "public-nav open" : "public-nav"} aria-label="Navigation principale">
           <Link href="/" onClick={() => setOpen(false)}>Accueil</Link>
           <Link href="/catalogue" onClick={() => setOpen(false)}>Catalogue</Link>
+          <Link href="/orientation" onClick={() => setOpen(false)}>Orientation</Link>
           <Link href="/#fonctionnement" onClick={() => setOpen(false)}>Fonctionnement</Link>
           {resolved && !user && (
             <Link href="/register/formateur" onClick={() => setOpen(false)}>Devenir formateur</Link>

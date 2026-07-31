@@ -1,12 +1,13 @@
 "use client";
 
-import {Search, SlidersHorizontal} from "lucide-react";
+import {Heart, Search, SlidersHorizontal} from "lucide-react";
 import {FormEvent, useCallback, useEffect, useState} from "react";
 import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
 import {PublicHeader} from "@/components/PublicHeader";
 import {Button, EmptyState, ErrorState, PageSkeleton, Pagination} from "@/components/ui";
-import {api} from "@/lib/api";
+import {api, currentUser} from "@/lib/api";
+import type {Favorite} from "@/lib/engagement";
 import type {CataloguePage} from "@/lib/learning";
 
 export default function Catalogue() {
@@ -18,21 +19,30 @@ export default function Catalogue() {
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const participant = currentUser()?.role === "PARTICIPANT";
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({q: query, page: String(page), size: "9"});
+    const params = new URLSearchParams({q: query, page: favoritesOnly ? "0" : String(page), size: favoritesOnly ? "50" : "9"});
     if (niveau) params.set("niveau", niveau);
     if (categorie) params.set("categorie", categorie);
     try {
-      setData(await api<CataloguePage>(`/catalogue?${params}`));
+      const catalogue = await api<CataloguePage>(`/catalogue?${params}`);
+      if (favoritesOnly) {
+        const favoriteIds = new Set((await api<Favorite[]>("/participant/favoris")).map((item) => item.formationId));
+        const content = catalogue.content.filter((item) => favoriteIds.has(item.id));
+        setData({...catalogue, content, totalElements: content.length, totalPages: content.length ? 1 : 0});
+      } else {
+        setData(catalogue);
+      }
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [categorie, niveau, page, query]);
+  }, [categorie, favoritesOnly, niveau, page, query]);
 
   useEffect(() => {
     // Each filter or page transition deliberately starts a new remote request.
@@ -91,6 +101,12 @@ export default function Catalogue() {
               aria-label="Filtrer par catégorie"
             />
             <Button type="submit"><SlidersHorizontal size={18} /> Rechercher</Button>
+            {participant && (
+              <label className="favorite-filter">
+                <input type="checkbox" checked={favoritesOnly} onChange={(event) => {setFavoritesOnly(event.target.checked); setPage(0);}} />
+                <Heart size={16} fill={favoritesOnly ? "currentColor" : "none"} /> Mes favoris
+              </label>
+            )}
           </form>
 
           {loading && <PageSkeleton cards={6} />}
@@ -99,7 +115,7 @@ export default function Catalogue() {
             <>
               <div className="result-summary">
                 <span><strong>{data.totalElements}</strong> formation(s) publiée(s)</span>
-                {(query || niveau || categorie) && <span>Filtres actifs</span>}
+                {(query || niveau || categorie || favoritesOnly) && <span>Filtres actifs</span>}
               </div>
               {data.content.length > 0 ? (
                 <div className="course-grid">
@@ -112,7 +128,7 @@ export default function Catalogue() {
                   action={
                     <Button
                       variant="secondary"
-                      onClick={() => {setDraft(""); setQuery(""); setNiveau(""); setCategorie("");}}
+                      onClick={() => {setDraft(""); setQuery(""); setNiveau(""); setCategorie(""); setFavoritesOnly(false);}}
                     >
                       Réinitialiser les filtres
                     </Button>

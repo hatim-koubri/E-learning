@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Award,
   BookOpen,
   CalendarDays,
   CheckCircle2,
@@ -11,14 +10,13 @@ import {
   ClipboardCheck,
   GraduationCap,
   Layers3,
-  ShieldCheck,
-  Sparkles,
   UsersRound,
 } from "lucide-react";
 import {useEffect, useState} from "react";
 import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
 import {GuestOnly} from "@/components/GuestOnly";
+import {KnowledgePath} from "@/components/KnowledgePath";
 import {PublicHeader} from "@/components/PublicHeader";
 import {ErrorState, PageSkeleton} from "@/components/ui";
 import {api} from "@/lib/api";
@@ -66,14 +64,10 @@ export default function Home() {
                 aider à passer de la découverte à la maîtrise.
               </p>
               <div className="hero-actions">
-                <Link className="btn btn-primary" href="/catalogue">
-                  Explorer les formations <ArrowRight size={18} />
+                <Link className="btn btn-primary" href="/orientation">
+                  Trouver mon point de départ <ArrowRight size={18} />
                 </Link>
-                <GuestOnly>
-                  <Link className="btn btn-secondary" href="/register/formateur">
-                    Devenir formateur
-                  </Link>
-                </GuestOnly>
+                <Link className="btn btn-secondary" href="/catalogue">Explorer le catalogue</Link>
               </div>
               <div className="trust-line" aria-label="Avantages">
                 <span><CheckCircle2 size={17} /> Aperçus gratuits</span>
@@ -81,28 +75,13 @@ export default function Home() {
                 <span><CheckCircle2 size={17} /> Classes en direct</span>
               </div>
             </div>
-            <div className="hero-visual" aria-label="Aperçu de l’espace d’apprentissage">
-              <div className="live-chip"><span className="live-dot" /><strong>Classe en direct</strong></div>
-              <div className="hero-dashboard">
-                <div className="visual-title">
-                  <div><strong>Mon apprentissage</strong><small>Votre prochaine étape</small></div>
-                  <Award size={24} />
-                </div>
-                <div className="visual-course">
-                  <div className="visual-cover"><BookOpen size={28} /></div>
-                  <div>
-                    <span className="eyebrow">Parcours actif</span>
-                    <h3>Construire des compétences durables</h3>
-                    <div className="progress-track" aria-hidden="true"><span style={{width: "68%"}} /></div>
-                  </div>
-                </div>
-                <div className="visual-module-list">
-                  <div><CirclePlay size={18} /> Reprendre le dernier chapitre</div>
-                  <div><ClipboardCheck size={18} /> Préparer le prochain QCM</div>
-                  <div><UsersRound size={18} /> Rejoindre votre classe</div>
-                </div>
+            <div className="hero-visual knowledge-hero" aria-label="Le parcours de connaissance">
+              <div className="knowledge-hero-copy">
+                <span className="eyebrow">Le parcours de connaissance</span>
+                <h2>Une direction visible, étape après étape</h2>
+                <p>Chaque nœud correspond à une action pédagogique réelle, jamais à un compteur artificiel.</p>
               </div>
-              <div className="hero-score"><strong>68%</strong><span>progression du parcours</span></div>
+              <KnowledgePath active={0} />
             </div>
           </div>
         </section>

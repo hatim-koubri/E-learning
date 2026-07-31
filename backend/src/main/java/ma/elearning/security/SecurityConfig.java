@@ -20,7 +20,7 @@ public class SecurityConfig {
         var c = new CorsConfiguration();
         c.setAllowedOrigins(List.of(origin.isBlank() ? "http://localhost:3000" : origin));
         c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization","Content-Type"));
+        c.setAllowedHeaders(List.of("Authorization","Content-Type","Idempotency-Key"));
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
         return source;
@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register/**","/api/auth/login",
                                 "/api/auth/forgot-password","/api/auth/reset-password",
                                 "/api/catalogue/**",
+                                "/api/orientation/**","/api/formateurs/**",
                                 "/error",
                                 "/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

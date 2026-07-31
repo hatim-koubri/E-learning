@@ -18,7 +18,7 @@ public final class LearningDtos {
  public record PublicChapter(Long id,String titre,String description,int ordre,boolean verrouille,List<PublicResource> ressources){}
  public record PublicModule(Long id,String titre,String description,int ordre,boolean apercuGratuit,boolean verrouille,List<PublicChapter> chapitres){}
  public record CatalogueDetail(Long id,String titre,String description,String imageUrl,String langue,NiveauFormation niveau,
-  String categorie,BigDecimal prix,String devise,String formateur,int nombreModules,int nombreChapitres,
+  String categorie,BigDecimal prix,String devise,Long formateurId,String formateur,int nombreModules,int nombreChapitres,
   boolean inscrit,List<PublicModule> modules){}
  public record InscriptionResponse(Long id,Long formationId,Instant dateInscription,InscriptionStatut statut,
   TypeAcces typeAcces,BigDecimal progression,BigDecimal prixPaye,String devise,ModePaiement modePaiement){}

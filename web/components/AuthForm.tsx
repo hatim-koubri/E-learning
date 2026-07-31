@@ -6,6 +6,7 @@ import {FormEvent, useState} from "react";
 import {useRouter} from "next/navigation";
 import {Alert, Button, IconButton} from "@/components/ui";
 import {api, saveSession, type User} from "@/lib/api";
+import type {Preferences} from "@/lib/engagement";
 
 function PasswordField({
   name = "password",
@@ -60,12 +61,23 @@ export function LoginForm() {
         body: JSON.stringify({email: data.get("email"), password: data.get("password")}),
       });
       saveSession(response.accessToken, response.user);
+      let participantDestination = "/profile";
+      if (response.user.role === "PARTICIPANT") {
+        try {
+          const preferences = await api<Preferences>("/participant/preferences");
+          if (preferences && !preferences.onboardingTermine && !preferences.onboardingIgnore) {
+            participantDestination = "/participant/onboarding";
+          }
+        } catch {
+          // La connexion reste utilisable si le chargement facultatif de l'onboarding échoue.
+        }
+      }
       router.push(
         response.user.role === "ADMIN"
           ? "/admin/formateurs"
           : response.user.role === "FORMATEUR"
             ? "/formateur/formations"
-            : "/profile",
+            : participantDestination,
       );
     } catch (reason) {
       setError((reason as Error).message);

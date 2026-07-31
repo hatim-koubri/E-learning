@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import {beforeEach,describe,expect,it,vi} from "vitest";
 import Catalogue from "@/app/catalogue/page";
 import {api} from "@/lib/api";
-vi.mock("@/lib/api",()=>({api:vi.fn()}));
+vi.mock("@/lib/api",()=>({api:vi.fn(),currentUser:vi.fn(() => null)}));
 vi.mock("next/image",()=>({default:()=><span data-testid="next-image"/>}));
 
 const apiMock=vi.mocked(api);

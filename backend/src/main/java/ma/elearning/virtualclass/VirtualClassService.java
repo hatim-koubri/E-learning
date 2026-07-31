@@ -3,12 +3,14 @@ import ma.elearning.api.VirtualClassDtos.*; import ma.elearning.common.*; import
 import ma.elearning.learning.*; import ma.elearning.user.*; import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus; import org.springframework.stereotype.Service; import org.springframework.transaction.annotation.Transactional;
 import java.net.URLEncoder; import java.nio.charset.StandardCharsets; import java.time.*; import java.util.*;
+import ma.elearning.engagement.*;
 @Service
 public class VirtualClassService {
  private final ClasseRepository classes; private final ClasseMembreRepository membres; private final SeanceVirtuelleRepository seances;
  private final FormationRepository formations; private final InscriptionRepository inscriptions; private final UserRepository users; private final String jitsi;
+ private final EngagementService engagement;
  public VirtualClassService(ClasseRepository c,ClasseMembreRepository m,SeanceVirtuelleRepository s,FormationRepository f,
-  InscriptionRepository i,UserRepository u,@Value("${app.jitsi.base-url:https://meet.jit.si}")String j){classes=c;membres=m;seances=s;formations=f;inscriptions=i;users=u;jitsi=j.replaceAll("/+$","");}
+  InscriptionRepository i,UserRepository u,@Value("${app.jitsi.base-url:https://meet.jit.si}")String j,EngagementService engagement){classes=c;membres=m;seances=s;formations=f;inscriptions=i;users=u;jitsi=j.replaceAll("/+$","");this.engagement=engagement;}
  @Transactional public ClasseResponse create(String email,ClasseRequest r){
   Formation f=formations.findByIdAndFormateurEmail(r.formationId(),email).orElseThrow(this::notFound);
   if(f.getStatut()!=FormationStatus.PUBLIEE)throw error(HttpStatus.CONFLICT,"FORMATION_NOT_PUBLISHED","La formation doit être publiée.");
@@ -22,18 +24,22 @@ public class VirtualClassService {
   User u=users.findById(participantId).orElseThrow(this::notFound);if(!(u instanceof Participant p))throw error(HttpStatus.BAD_REQUEST,"PARTICIPANT_REQUIRED","Utilisateur participant requis.");
   Inscription i=inscriptions.findByParticipantEmailAndFormationId(p.getEmail(),c.getFormation().getId()).orElseThrow(()->error(HttpStatus.FORBIDDEN,"NOT_ELIGIBLE","Inscription requise."));
   if(i.getTypeAcces()!=TypeAcces.CONTENU_ET_CLASSES)throw error(HttpStatus.FORBIDDEN,"NOT_ELIGIBLE","L'accès CONTENU_ET_CLASSES est requis.");
-  ClasseMembre existing=membres.findByClasseIdAndParticipantId(id,participantId).orElse(null);if(existing==null){existing=new ClasseMembre();existing.setClasse(c);existing.setParticipant(p);membres.saveAndFlush(existing);}return dto(c);
+  ClasseMembre existing=membres.findByClasseIdAndParticipantId(id,participantId).orElse(null);if(existing==null){existing=new ClasseMembre();existing.setClasse(c);existing.setParticipant(p);membres.saveAndFlush(existing);
+   engagement.sendNotification(p.getEmail(),NotificationCategory.CLASSE,"Affectation à une classe","Vous avez été affecté à "+c.getNom()+" pour "+c.getFormation().getTitre()+".","/participant/classes");}return dto(c);
  }
- @Transactional public SessionResponse schedule(String email,Long classId,SessionRequest r){Classe c=owned(email,classId);validate(r.dateDebut(),r.dateFin(),r.fuseauHoraire());SeanceVirtuelle s=new SeanceVirtuelle();s.setClasse(c);apply(s,r);s.setIdentifiantSalle("elearning-"+UUID.randomUUID());return session(seances.saveAndFlush(s));}
+ @Transactional public SessionResponse schedule(String email,Long classId,SessionRequest r){Classe c=owned(email,classId);validate(r.dateDebut(),r.dateFin(),r.fuseauHoraire());SeanceVirtuelle s=new SeanceVirtuelle();s.setClasse(c);apply(s,r);s.setIdentifiantSalle("elearning-"+UUID.randomUUID());s=seances.saveAndFlush(s);
+  for(ClasseMembre member:membres.findByClasseId(classId))if("ACCEPTE".equals(member.getStatut()))engagement.sendNotification(member.getParticipant().getEmail(),NotificationCategory.CLASSE,"Nouvelle séance planifiée",s.getTitre()+" est planifiée le "+s.getDateDebut()+".","/participant/classes");
+  return session(s);}
  @Transactional public SessionResponse updateSession(String email,Long id,SessionRequest r){SeanceVirtuelle s=seances.findByIdAndClasseFormationFormateurEmail(id,email).orElseThrow(this::notFound);if("ANNULEE".equals(s.getStatut()))throw error(HttpStatus.CONFLICT,"SESSION_CANCELLED","Une séance annulée ne peut plus être modifiée.");validate(r.dateDebut(),r.dateFin(),r.fuseauHoraire());apply(s,r);return session(seances.saveAndFlush(s));}
  @Transactional public SessionResponse cancel(String email,Long id){SeanceVirtuelle s=seances.findByIdAndClasseFormationFormateurEmail(id,email).orElseThrow(this::notFound);s.setStatut("ANNULEE");return session(seances.saveAndFlush(s));}
  @Transactional(readOnly=true) public List<ClasseResponse> mine(String email){return membres.findByParticipantEmailAndStatut(email,"ACCEPTE").stream().map(ClasseMembre::getClasse).distinct().map(this::dto).toList();}
- @Transactional(readOnly=true) public JoinResponse join(String email,Long sessionId,boolean trainer){
+ @Transactional public JoinResponse join(String email,Long sessionId,boolean trainer){
   SeanceVirtuelle s=seances.findById(sessionId).orElseThrow(this::notFound);boolean owner=s.getClasse().getFormation().getFormateur().getEmail().equalsIgnoreCase(email);
   if(!trainer){Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,s.getClasse().getFormation().getId()).orElseThrow(()->error(HttpStatus.FORBIDDEN,"ACCESS_DENIED","Accès refusé."));
    if(i.getTypeAcces()!=TypeAcces.CONTENU_ET_CLASSES||!membres.existsByClasseIdAndParticipantEmailAndStatut(s.getClasse().getId(),email,"ACCEPTE"))throw error(HttpStatus.FORBIDDEN,"ACCESS_DENIED","Vous n'êtes pas membre de cette classe.");}
   else if(!owner)throw notFound();
   if(!"PLANIFIEE".equals(s.getStatut()))throw error(HttpStatus.CONFLICT,"SESSION_UNAVAILABLE","Cette séance est inaccessible.");
+  if(!trainer)engagement.recordActivity(email,s.getClasse().getFormation().getId(),ActivityType.CLASSE_REJOINTE,"class-session:"+sessionId,30);
   String url=jitsi+"/"+URLEncoder.encode(s.getIdentifiantSalle(),StandardCharsets.UTF_8);return new JoinResponse(s.getId(),s.getIdentifiantSalle(),jitsi,url);
  }
  private void apply(Classe c,ClasseRequest r){c.setNom(r.nom().trim());c.setDescription(r.description());c.setCapacite(r.capacite());c.setDateDebut(r.dateDebut());c.setDateFin(r.dateFin());}

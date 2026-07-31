@@ -3,11 +3,14 @@
 import Link from "next/link";
 import {
   BookOpen,
+  Bell,
   CalendarDays,
   GraduationCap,
+  Flag,
   LayoutDashboard,
   LogOut,
   Menu,
+  NotebookPen,
   ShieldCheck,
   UserRound,
   X,
@@ -27,11 +30,15 @@ const roleLabels: Record<User["role"], string> = {
 const navByRole = {
   ADMIN: [
     {href: "/admin/formateurs", label: "Demandes formateurs", icon: ShieldCheck},
+    {href: "/admin/avis", label: "Avis signalés", icon: Flag},
+    {href: "/notifications", label: "Notifications", icon: Bell},
     {href: "/profile", label: "Mon profil", icon: UserRound},
   ],
   FORMATEUR: [
     {href: "/formateur/formations", label: "Mes formations", icon: GraduationCap},
     {href: "/formateur/classes", label: "Classes virtuelles", icon: CalendarDays},
+    {href: "/formateur/engagement", label: "Engagement", icon: LayoutDashboard},
+    {href: "/notifications", label: "Notifications", icon: Bell},
     {href: "/catalogue", label: "Voir le catalogue", icon: BookOpen},
     {href: "/profile", label: "Mon profil", icon: UserRound},
   ],
@@ -39,6 +46,8 @@ const navByRole = {
     {href: "/profile", label: "Tableau de bord", icon: LayoutDashboard},
     {href: "/catalogue", label: "Explorer les cours", icon: BookOpen},
     {href: "/participant/classes", label: "Mes classes", icon: CalendarDays},
+    {href: "/participant/notes", label: "Notes et signets", icon: NotebookPen},
+    {href: "/notifications", label: "Notifications", icon: Bell},
   ],
 };
 

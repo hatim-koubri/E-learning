@@ -9,13 +9,13 @@ import {PageHeader} from "@/components/PageHeader";
 import {Protected} from "@/components/Protected";
 import {Alert, Badge, Button, Card, EmptyState, ErrorState, Skeleton} from "@/components/ui";
 import {api} from "@/lib/api";
-import type {QuizParticipant} from "@/lib/learning";
+import type {QuizParticipant, QuizResult} from "@/lib/learning";
 
 export default function QuizPage() {
   const formationId = Number(useParams<{formationId: string}>().formationId);
   const [items, setItems] = useState<QuizParticipant[]>([]);
   const [selected, setSelected] = useState<Record<number, number[]>>({});
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<QuizResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
@@ -42,13 +42,13 @@ export default function QuizPage() {
     setBusy(quiz.id);
     setError("");
     try {
-      const response = await api<{pourcentage: number; reussi: boolean}>(`/participant/quiz/${quiz.id}/tentatives`, {
+      const response = await api<QuizResult>(`/participant/quiz/${quiz.id}/tentatives`, {
         method: "POST",
         body: JSON.stringify({
           reponses: Object.fromEntries(quiz.questions.map((question) => [question.id, selected[question.id] ?? []])),
         }),
       });
-      setResult(`Résultat : ${response.pourcentage}% — ${response.reussi ? "réussi" : "non réussi"}`);
+      setResult(response);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -76,7 +76,35 @@ export default function QuizPage() {
           Les quiz ne sont pas disponibles hors ligne. Une tentative envoyée ne peut pas être annulée.
         </Alert>
         {error && <ErrorState message={error} onRetry={load} />}
-        {result && <Alert variant="success">{result}</Alert>}
+        {result && (
+          <Card className="quiz-feedback" aria-live="polite">
+            <Alert variant={result.reussi ? "success" : "error"}>
+              Résultat : {result.pourcentage}% — {result.reussi ? "réussi" : "à consolider"}
+            </Alert>
+            <h2>Retour question par question</h2>
+            <ul>
+              {(result.feedback ?? []).map((item, index) => (
+                <li className={item.correcte ? "correct" : "incorrect"} key={item.questionId}>
+                  <CheckCircle2 size={17} />
+                  <div>
+                    <strong>Question {index + 1} : {item.correcte ? "correcte" : "incorrecte"}</strong>
+                    {item.explication && <p>{item.explication}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {(result.chapitresARevoir ?? []).length > 0 && (
+              <div className="review-chapters">
+                <h3>Chapitres à revoir</h3>
+                {(result.chapitresARevoir ?? []).map((chapter) => (
+                  <Link className="btn btn-secondary" href={`/catalogue/${formationId}?chapitre=${chapter.chapitreId}`} key={chapter.chapitreId}>
+                    Reprendre {chapter.titre}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
         {loading ? (
           <Card style={{marginTop: 20}}><Skeleton className="skeleton-line medium" /><Skeleton className="skeleton-cover" /></Card>
         ) : !error && items.length === 0 ? (
