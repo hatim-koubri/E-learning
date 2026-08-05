@@ -10,12 +10,29 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
-    const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-    queueMicrotask(() => setTheme(current));
+    let active = true;
+    const media = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : null;
+    const resolveTheme = (): Theme => {
+      const saved = localStorage.getItem("theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return media?.matches ? "dark" : "light";
+    };
+    const sync = () => {
+      if (active) setTheme(resolveTheme());
+    };
+    queueMicrotask(sync);
+    media?.addEventListener("change", sync);
+    return () => {
+      active = false;
+      media?.removeEventListener("change", sync);
+    };
   }, []);
 
   function toggle() {
-    const next = theme === "dark" ? "light" : "dark";
+    const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const next = current === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("theme", next);
     setTheme(next);

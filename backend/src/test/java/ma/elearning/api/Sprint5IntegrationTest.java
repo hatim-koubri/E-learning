@@ -147,7 +147,7 @@ class Sprint5IntegrationTest {
         ResumeResponse position = engagement.recordPosition(participant.getEmail(), formationId,
                 new LearningPositionRequest(firstModule, firstChapter, resourceId));
         assertEquals(resourceId, position.ressourceId());
-        assertTrue(position.href().contains("#ressource-" + resourceId));
+        assertEquals("/apprentissage/" + formationId + "?ressource=" + resourceId, position.href());
         assertEquals(firstChapter, engagement.resume(participant.getEmail()).chapitreId());
 
         PrivateNoteResponse note = engagement.createNote(participant.getEmail(), formationId,
@@ -228,6 +228,34 @@ class Sprint5IntegrationTest {
 
         engagement.deleteReview(participant.getEmail(), review.id());
         assertTrue(engagement.reviewReports().isEmpty());
+    }
+
+    @Test
+    void trainerEngagementWithoutCoursesReturnsAnEmptyPayload() {
+        Formateur emptyTrainer = save(new Formateur(),
+                "empty-trainer-service-" + trainer.getId() + "@test.local", Role.FORMATEUR);
+
+        TrainerEngagement result = engagement.trainerEngagement(emptyTrainer.getEmail());
+
+        assertEquals(0, result.inscriptions());
+        assertEquals(0, result.avisPublies());
+        assertEquals(0, result.moyenneAvis());
+        assertTrue(result.avis().isEmpty());
+    }
+
+    @Test
+    void trainerEngagementEndpointReturnsOkForATrainerWithoutData() throws Exception {
+        Formateur emptyTrainer = save(new Formateur(),
+                "empty-trainer-http-" + trainer.getId() + "@test.local", Role.FORMATEUR);
+        String token = jwt.generate(emptyTrainer);
+
+        mvc.perform(get("/api/formateur/engagement")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inscriptions").value(0))
+                .andExpect(jsonPath("$.avisPublies").value(0))
+                .andExpect(jsonPath("$.moyenneAvis").value(0))
+                .andExpect(jsonPath("$.avis").isEmpty());
     }
 
     @Test

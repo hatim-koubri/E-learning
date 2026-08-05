@@ -12,9 +12,13 @@ import {
   ButtonHTMLAttributes,
   HTMLAttributes,
   InputHTMLAttributes,
+  KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
+  useEffect,
+  useId,
+  useRef,
 } from "react";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
@@ -95,16 +99,15 @@ export function ProgressBar({
           <strong>{safeValue}%</strong>
         </div>
       )}
-      <div
+      <progress
         className="progress-track"
-        role="progressbar"
+        value={safeValue}
+        max={100}
         aria-label={label}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={safeValue}
-      >
-        <span style={{width: `${safeValue}%`}} />
-      </div>
+      />
     </div>
   );
 }
@@ -221,6 +224,53 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const panel = panelRef.current;
+    const focusableSelector = "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
+    document.body.style.overflow = "hidden";
+    queueMicrotask(() => (panel?.querySelector<HTMLElement>(focusableSelector) ?? panel)?.focus());
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", keyboard);
+    return () => {
+      window.removeEventListener("keydown", keyboard);
+      document.body.style.overflow = previousOverflow;
+      previous?.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -228,12 +278,14 @@ export function Modal({
         className="modal-panel"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
+        ref={panelRef}
+        tabIndex={-1}
       >
         <header className="modal-header">
           <div>
-            <h2 id="modal-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {description && <p>{description}</p>}
           </div>
           <IconButton label="Fermer" onClick={onClose}><X size={19} /></IconButton>
@@ -284,9 +336,23 @@ export function Tabs({
   active: string;
   onChange: (id: string) => void;
 }) {
+  function navigate(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (!direction && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : (index + direction + items.length) % items.length;
+    onChange(items[next].id);
+    const tablist = event.currentTarget.parentElement;
+    queueMicrotask(() => tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus());
+  }
+
   return (
     <div className="tabs" role="tablist" aria-label="Sections">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <button
           type="button"
           role="tab"
@@ -294,6 +360,8 @@ export function Tabs({
           className={cn("tab", active === item.id && "active")}
           key={item.id}
           onClick={() => onChange(item.id)}
+          onKeyDown={(event) => navigate(event, index)}
+          tabIndex={active === item.id ? 0 : -1}
         >
           {item.label}
         </button>

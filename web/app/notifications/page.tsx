@@ -43,17 +43,29 @@ export default function NotificationsPage() {
   useEffect(() => { queueMicrotask(load); }, []);
 
   async function markRead(id: number) {
-    await api(`/notifications/${id}/lue`, {method: "PUT"});
+    const previous = data;
     setData((current) => current ? {
       ...current,
       nonLues: Math.max(0, current.nonLues - (current.content.find((item) => item.id === id)?.lue ? 0 : 1)),
       content: current.content.map((item) => item.id === id ? {...item, lue: true} : item),
     } : current);
+    try {
+      await api(`/notifications/${id}/lue`, {method: "PUT"});
+    } catch (reason) {
+      setData(previous);
+      setError((reason as Error).message);
+    }
   }
 
   async function markAllRead() {
-    await api("/notifications/tout-lire", {method: "PUT"});
+    const previous = data;
     setData((current) => current ? {...current, nonLues: 0, content: current.content.map((item) => ({...item, lue: true}))} : current);
+    try {
+      await api("/notifications/tout-lire", {method: "PUT"});
+    } catch (reason) {
+      setData(previous);
+      setError((reason as Error).message);
+    }
   }
 
   async function updatePreference(current: NotificationPreference, field: "dansApplication" | "emailActif") {

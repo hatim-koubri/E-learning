@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
   BookOpen,
   CalendarDays,
   CheckCircle2,
@@ -17,6 +18,8 @@ import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
 import {GuestOnly} from "@/components/GuestOnly";
 import {KnowledgePath} from "@/components/KnowledgePath";
+import {MagneticLink} from "@/components/MagneticLink";
+import {MotionObserver} from "@/components/MotionObserver";
 import {PublicHeader} from "@/components/PublicHeader";
 import {ErrorState, PageSkeleton} from "@/components/ui";
 import {api} from "@/lib/api";
@@ -64,9 +67,9 @@ export default function Home() {
                 aider à passer de la découverte à la maîtrise.
               </p>
               <div className="hero-actions">
-                <Link className="btn btn-primary" href="/orientation">
+                <MagneticLink className="btn btn-primary" href="/orientation">
                   Trouver mon point de départ <ArrowRight size={18} />
-                </Link>
+                </MagneticLink>
                 <Link className="btn btn-secondary" href="/catalogue">Explorer le catalogue</Link>
               </div>
               <div className="trust-line" aria-label="Avantages">
@@ -75,18 +78,63 @@ export default function Home() {
                 <span><CheckCircle2 size={17} /> Classes en direct</span>
               </div>
             </div>
-            <div className="hero-visual knowledge-hero" aria-label="Le parcours de connaissance">
-              <div className="knowledge-hero-copy">
-                <span className="eyebrow">Le parcours de connaissance</span>
-                <h2>Une direction visible, étape après étape</h2>
-                <p>Chaque nœud correspond à une action pédagogique réelle, jamais à un compteur artificiel.</p>
+            <div
+              className="hero-visual hero-learning-preview"
+              aria-label="Aperçu illustratif de l’espace d’apprentissage"
+            >
+              <div className="hero-preview-card">
+                <header className="visual-title">
+                  <div>
+                    <span className="preview-kicker">Aperçu illustratif</span>
+                    <strong>Mon apprentissage</strong>
+                    <small>Une vue claire de la prochaine étape</small>
+                  </div>
+                  <span className="live-chip" aria-label="Exemple de statut : classe en direct">
+                    <span className="live-dot" aria-hidden="true" />
+                    Classe en direct
+                  </span>
+                </header>
+
+                <section className="visual-course" aria-label="Exemple de parcours actif à 68 pour cent">
+                  <div className="visual-cover" aria-hidden="true"><BookOpen size={28} /></div>
+                  <div className="visual-course-copy">
+                    <div className="visual-progress-heading">
+                      <span className="eyebrow">Parcours actif</span>
+                      <strong>68&nbsp;%</strong>
+                    </div>
+                    <h2>Construire des compétences durables</h2>
+                    <progress
+                      className="progress-track"
+                      value={68}
+                      max={100}
+                      aria-label="Progression illustrative du parcours"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={68}
+                    />
+                    <small>Donnée de démonstration</small>
+                  </div>
+                </section>
+
+                <div className="visual-module-list" aria-label="Exemples d’actions disponibles">
+                  <div><CirclePlay size={18} /> <span>Reprendre le dernier chapitre</span></div>
+                  <div><ClipboardCheck size={18} /> <span>Préparer le prochain QCM</span></div>
+                  <div><UsersRound size={18} /> <span>Rejoindre votre classe</span></div>
+                </div>
+
+                <div className="visual-journey">
+                  <div>
+                    <span className="eyebrow">Le voyage de la connaissance</span>
+                    <Award aria-hidden="true" size={20} />
+                  </div>
+                  <KnowledgePath active={2} compact label="Exemple du parcours de connaissance" />
+                </div>
               </div>
-              <KnowledgePath active={0} />
             </div>
           </div>
         </section>
 
-        <section className="section section-alt">
+        <section className="section section-alt" data-reveal>
           <div className="container">
             <div className="section-heading">
               <div>
@@ -110,7 +158,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="section">
+        <section className="section" data-reveal>
           <div className="container">
             <div className="section-heading">
               <div>
@@ -131,7 +179,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="section section-alt" id="fonctionnement">
+        <section className="section section-alt" id="fonctionnement" data-reveal>
           <div className="container">
             <div className="section-heading">
               <div>
@@ -155,7 +203,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="section">
+        <section className="section" data-reveal>
           <div className="container">
             <div className="section-heading">
               <div>
@@ -182,7 +230,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="section section-alt" id="formateurs">
+        <section className="section section-alt" id="formateurs" data-reveal>
           <div className="container">
             <div className="cta-band">
               <div>
@@ -203,6 +251,7 @@ export default function Home() {
         </section>
       </main>
       <Footer />
+      <MotionObserver />
     </div>
   );
 }

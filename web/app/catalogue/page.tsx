@@ -4,9 +4,10 @@ import {Heart, Search, SlidersHorizontal} from "lucide-react";
 import {FormEvent, useCallback, useEffect, useState} from "react";
 import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
+import {useResolvedSession} from "@/components/GuestOnly";
 import {PublicHeader} from "@/components/PublicHeader";
 import {Button, EmptyState, ErrorState, PageSkeleton, Pagination} from "@/components/ui";
-import {api, currentUser} from "@/lib/api";
+import {api} from "@/lib/api";
 import type {Favorite} from "@/lib/engagement";
 import type {CataloguePage} from "@/lib/learning";
 
@@ -15,40 +16,59 @@ export default function Catalogue() {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [niveau, setNiveau] = useState("");
+  const [langue, setLangue] = useState("");
   const [categorie, setCategorie] = useState("");
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const participant = currentUser()?.role === "PARTICIPANT";
+  const {resolved, user} = useResolvedSession();
+  const participant = resolved && user?.role === "PARTICIPANT";
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     const params = new URLSearchParams({q: query, page: favoritesOnly ? "0" : String(page), size: favoritesOnly ? "50" : "9"});
     if (niveau) params.set("niveau", niveau);
+    if (langue) params.set("langue", langue);
     if (categorie) params.set("categorie", categorie);
     try {
-      const catalogue = await api<CataloguePage>(`/catalogue?${params}`);
       if (favoritesOnly) {
-        const favoriteIds = new Set((await api<Favorite[]>("/participant/favoris")).map((item) => item.formationId));
-        const content = catalogue.content.filter((item) => favoriteIds.has(item.id));
-        setData({...catalogue, content, totalElements: content.length, totalPages: content.length ? 1 : 0});
+        const [favorites, firstPage] = await Promise.all([
+          api<Favorite[]>("/participant/favoris"),
+          api<CataloguePage>(`/catalogue?${params}`),
+        ]);
+        const allCourses = [...firstPage.content];
+        for (let currentPage = 1; currentPage < firstPage.totalPages; currentPage += 1) {
+          params.set("page", String(currentPage));
+          allCourses.push(...(await api<CataloguePage>(`/catalogue?${params}`)).content);
+        }
+        const favoriteIds = new Set(favorites.map((item) => item.formationId));
+        const content = allCourses.filter((item) => favoriteIds.has(item.id));
+        setData({...firstPage, content, page: 0, totalElements: content.length, totalPages: content.length ? 1 : 0});
       } else {
-        setData(catalogue);
+        setData(await api<CataloguePage>(`/catalogue?${params}`));
       }
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [categorie, favoritesOnly, niveau, page, query]);
+  }, [categorie, favoritesOnly, langue, niveau, page, query]);
 
   useEffect(() => {
     // Each filter or page transition deliberately starts a new remote request.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (participant && new URLSearchParams(window.location.search).get("favoris") === "1") {
+      // The query string is an explicit navigation intent from the participant dashboard.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFavoritesOnly(true);
+    }
+  }, [participant]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -94,6 +114,16 @@ export default function Catalogue() {
               <option value="AVANCE">Avancé</option>
               <option value="TOUS_NIVEAUX">Tous niveaux</option>
             </select>
+            <select
+              aria-label="Filtrer par langue"
+              value={langue}
+              onChange={(event) => changeFilter(setLangue, event.target.value)}
+            >
+              <option value="">Toutes les langues</option>
+              <option value="fr">Français</option>
+              <option value="ar">Arabe</option>
+              <option value="en">Anglais</option>
+            </select>
             <input
               value={categorie}
               onChange={(event) => setCategorie(event.target.value)}
@@ -115,7 +145,7 @@ export default function Catalogue() {
             <>
               <div className="result-summary">
                 <span><strong>{data.totalElements}</strong> formation(s) publiée(s)</span>
-                {(query || niveau || categorie || favoritesOnly) && <span>Filtres actifs</span>}
+                {(query || niveau || langue || categorie || favoritesOnly) && <span>Filtres actifs</span>}
               </div>
               {data.content.length > 0 ? (
                 <div className="course-grid">
@@ -128,7 +158,7 @@ export default function Catalogue() {
                   action={
                     <Button
                       variant="secondary"
-                      onClick={() => {setDraft(""); setQuery(""); setNiveau(""); setCategorie(""); setFavoritesOnly(false);}}
+                      onClick={() => {setDraft(""); setQuery(""); setNiveau(""); setLangue(""); setCategorie(""); setFavoritesOnly(false);}}
                     >
                       Réinitialiser les filtres
                     </Button>

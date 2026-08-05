@@ -110,6 +110,16 @@ class FormationServiceTest {
         RessourceResponse resource = service.addYoutube(owner.getEmail(), chapterId,
                 new YoutubeRequest("Démonstration", "https://youtu.be/abc123"));
         assertEquals(ResourceType.YOUTUBE, resource.type());
+        assertEquals("https://www.youtube.com/watch?v=abc123", resource.urlYoutube());
+        assertEquals("https://www.youtube.com/watch?v=watch123",
+                service.addYoutube(owner.getEmail(), chapterId,
+                        new YoutubeRequest("Watch", "https://www.youtube.com/watch?v=watch123&t=20")).urlYoutube());
+        assertEquals("https://www.youtube.com/watch?v=shorts123",
+                service.addYoutube(owner.getEmail(), chapterId,
+                        new YoutubeRequest("Short", "https://youtube.com/shorts/shorts123?feature=share")).urlYoutube());
+        assertEquals("https://www.youtube.com/watch?v=embed123",
+                service.addYoutube(owner.getEmail(), chapterId,
+                        new YoutubeRequest("Embed", "https://m.youtube.com/embed/embed123")).urlYoutube());
         assertEquals("INVALID_YOUTUBE_URL", assertThrows(BusinessException.class,
                 () -> service.addYoutube(owner.getEmail(), chapterId,
                         new YoutubeRequest("Piège", "https://youtube.com.evil.test/watch?v=x"))).getCode());

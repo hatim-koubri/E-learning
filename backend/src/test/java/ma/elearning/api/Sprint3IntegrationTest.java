@@ -15,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.*;
@@ -29,7 +30,7 @@ class Sprint3IntegrationTest {
  @Autowired MockMvc mvc; @Autowired ObjectMapper json; @Autowired UserRepository users; @Autowired JwtService jwt;
  @Autowired FormationService formationService; @Autowired InscriptionRepository inscriptions; @Autowired QuizService quizService;
  @MockitoBean ObjectStorage storage;
- private Formateur trainer; private Participant participant; private Admin admin; private Long formationId; private Long previewResource; private Long lockedResource;
+ private Formateur trainer; private Participant participant; private Admin admin; private Long formationId; private Long previewResource; private Long lockedResource; private Long pdfResource;
  @BeforeEach void setup(){
   when(storage.temporaryUrl(anyString())).thenAnswer(i->"http://temporary.test/"+i.getArgument(0));
   trainer=save(new Formateur(),"trainer@s3.test",Role.FORMATEUR);participant=save(new Participant(),"participant@s3.test",Role.PARTICIPANT);admin=save(new Admin(),"admin@s3.test",Role.ADMIN);
@@ -37,6 +38,8 @@ class Sprint3IntegrationTest {
   Long m1=formationService.addModule(trainer.getEmail(),formationId,new ModuleRequest("Aperçu",null,true)).id();
   Long c1=formationService.addChapitre(trainer.getEmail(),m1,new ChapitreRequest("Introduction",null)).id();
   previewResource=formationService.addYoutube(trainer.getEmail(),c1,new YoutubeRequest("Présentation","https://youtu.be/preview")).id();
+  pdfResource=formationService.uploadResource(trainer.getEmail(),c1,"Support PDF",ResourceType.PDF,true,
+   new MockMultipartFile("file","support.pdf","application/pdf","%PDF-1.7\nreader".getBytes(java.nio.charset.StandardCharsets.US_ASCII))).id();
   Long m2=formationService.addModule(trainer.getEmail(),formationId,new ModuleRequest("Complet",null,false)).id();
   Long c2=formationService.addChapitre(trainer.getEmail(),m2,new ChapitreRequest("Avancé",null)).id();
   lockedResource=formationService.addYoutube(trainer.getEmail(),c2,new YoutubeRequest("Cours","https://youtu.be/full")).id();
@@ -45,8 +48,14 @@ class Sprint3IntegrationTest {
  @Test void catalogueIsPublicSearchableAndPreviewOnlyBeforeEnrollment() throws Exception{
   mvc.perform(get("/api/catalogue").param("q","Spring")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
   mvc.perform(get("/api/catalogue/"+formationId)).andExpect(status().isOk()).andExpect(jsonPath("$.inscrit").value(false))
+   .andExpect(jsonPath("$.supplementClasses").value(0.0)).andExpect(jsonPath("$.prixAvecClasses").value(99.0))
+   .andExpect(jsonPath("$.classesDisponibles").value(false)).andExpect(jsonPath("$.typeAcces").doesNotExist())
    .andExpect(jsonPath("$.modules[0].verrouille").value(false)).andExpect(jsonPath("$.modules[1].verrouille").value(true));
   mvc.perform(get("/api/catalogue/"+formationId+"/ressources/"+previewResource+"/acces")).andExpect(status().isOk());
+  mvc.perform(get("/api/catalogue/"+formationId+"/ressources/"+pdfResource+"/acces")).andExpect(status().isOk())
+   .andExpect(jsonPath("$.type").value("PDF")).andExpect(jsonPath("$.titre").value("Support PDF"))
+   .andExpect(jsonPath("$.typeMime").value("application/pdf")).andExpect(jsonPath("$.taille").isNumber())
+   .andExpect(jsonPath("$.telechargeable").value(false));
   mvc.perform(get("/api/catalogue/"+formationId+"/ressources/"+lockedResource+"/acces")).andExpect(status().isForbidden());
  }
  @Test void simulatedEnrollmentIsParticipantOnlyIdempotentAndUnlocksContent() throws Exception{
@@ -56,7 +65,11 @@ class Sprint3IntegrationTest {
    .andExpect(jsonPath("$.typeAcces").value("CONTENU"));
   mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+token)).andExpect(status().isOk());
   assertEquals(1,inscriptions.count());
+  mvc.perform(get("/api/catalogue/"+formationId).header("Authorization","Bearer "+token)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.inscrit").value(true)).andExpect(jsonPath("$.typeAcces").value("CONTENU"));
   mvc.perform(get("/api/catalogue/"+formationId+"/ressources/"+lockedResource+"/acces").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+  mvc.perform(get("/api/catalogue/"+formationId+"/ressources/"+pdfResource+"/acces").header("Authorization","Bearer "+token))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.telechargeable").value(true));
   mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+jwt.generate(trainer))).andExpect(status().isForbidden());
   mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+jwt.generate(admin))).andExpect(status().isForbidden());
  }

@@ -47,15 +47,20 @@ class Sprint4IntegrationTest {
  }
  @Test void classOwnershipDatesMembershipAndJitsiAreEnforced()throws Exception{
   String participant=jwt.generate(member),outside=jwt.generate(outsider),trainerToken=jwt.generate(trainer);
+  mvc.perform(get("/api/catalogue")).andExpect(status().isOk()).andExpect(jsonPath("$.content[0].offreClasses").value(true)).andExpect(jsonPath("$.content[0].classeActive").value(false));
   mvc.perform(post("/api/participant/formations/"+formationId+"/inscription-avec-classes").header("Authorization","Bearer "+participant).header("Idempotency-Key","full-1"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.montant").value(125.0));
   var c=classes.create(trainer.getEmail(),new VirtualClassDtos.ClasseRequest(formationId,"Groupe A",null,10,LocalDate.now(),LocalDate.now().plusDays(30)));
+  mvc.perform(get("/api/catalogue")).andExpect(status().isOk()).andExpect(jsonPath("$.content[0].classeActive").value(true));
   assertThrows(RuntimeException.class,()->classes.update(otherTrainer.getEmail(),c.id(),new VirtualClassDtos.ClasseRequest(formationId,"Vol",null,10,LocalDate.now(),LocalDate.now().plusDays(1))));
   classes.addMember(trainer.getEmail(),c.id(),member.getId());
-  var s=classes.schedule(trainer.getEmail(),c.id(),new VirtualClassDtos.SessionRequest("Direct",Instant.now().plusSeconds(3600),Instant.now().plusSeconds(7200),"Africa/Casablanca"));
-  mvc.perform(get("/api/participant/seances/"+s.id()+"/join").header("Authorization","Bearer "+outside)).andExpect(status().isForbidden());
-  mvc.perform(get("/api/participant/seances/"+s.id()+"/join").header("Authorization","Bearer "+participant)).andExpect(status().isOk()).andExpect(jsonPath("$.roomName").value(org.hamcrest.Matchers.startsWith("elearning-"))).andExpect(jsonPath("$.joinUrl").value(org.hamcrest.Matchers.startsWith("https://meet.jit.si/")));
-  mvc.perform(get("/api/formateur/seances/"+s.id()+"/join").header("Authorization","Bearer "+trainerToken)).andExpect(status().isOk());
+  var future=classes.schedule(trainer.getEmail(),c.id(),new VirtualClassDtos.SessionRequest("Bientôt",Instant.now().plusSeconds(3600),Instant.now().plusSeconds(7200),"Africa/Casablanca"));
+  mvc.perform(get("/api/participant/seances/"+future.id()+"/join").header("Authorization","Bearer "+outside)).andExpect(status().isForbidden());
+  mvc.perform(get("/api/participant/seances/"+future.id()+"/join").header("Authorization","Bearer "+participant)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SESSION_NOT_ACTIVE"));
+  mvc.perform(get("/api/formateur/seances/"+future.id()+"/join").header("Authorization","Bearer "+trainerToken)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SESSION_NOT_ACTIVE"));
+  var live=classes.schedule(trainer.getEmail(),c.id(),new VirtualClassDtos.SessionRequest("Direct",Instant.now().minusSeconds(30),Instant.now().plusSeconds(3600),"Africa/Casablanca"));
+  mvc.perform(get("/api/participant/seances/"+live.id()+"/join").header("Authorization","Bearer "+participant)).andExpect(status().isOk()).andExpect(jsonPath("$.roomName").value(org.hamcrest.Matchers.startsWith("elearning-"))).andExpect(jsonPath("$.joinUrl").value(org.hamcrest.Matchers.startsWith("https://meet.jit.si/")));
+  mvc.perform(get("/api/formateur/seances/"+live.id()+"/join").header("Authorization","Bearer "+trainerToken)).andExpect(status().isOk());
  }
  @Test void invalidSessionDatesAndContentOnlyAssignmentAreRejected()throws Exception{
   mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+jwt.generate(member))).andExpect(status().isOk());

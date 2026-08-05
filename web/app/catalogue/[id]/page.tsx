@@ -28,8 +28,9 @@ import {levelLabel} from "@/components/CourseCard";
 import {FavoriteButton} from "@/components/FavoriteButton";
 import {Footer} from "@/components/Footer";
 import {KnowledgePath} from "@/components/KnowledgePath";
+import {LearningResourceViewer} from "@/components/LearningResourceViewer";
 import {PublicHeader} from "@/components/PublicHeader";
-import {Alert, Badge, Button, ErrorState, IconButton, PageSkeleton, Toast} from "@/components/ui";
+import {Alert, Badge, Button, ErrorState, IconButton, Modal, PageSkeleton, Toast} from "@/components/ui";
 import {api, currentUser} from "@/lib/api";
 import type {Review, ReviewSummary} from "@/lib/engagement";
 import type {CatalogueDetail, PublicResource, ResourceAccess} from "@/lib/learning";
@@ -57,6 +58,9 @@ export default function CourseDetail() {
   const [reviewNote, setReviewNote] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [reportTarget, setReportTarget] = useState<Review | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [selectedOffer, setSelectedOffer] = useState<"content" | "classes">("content");
 
   const load = useCallback(async () => {
     setError("");
@@ -66,6 +70,7 @@ export default function CourseDetail() {
         api<ReviewSummary>(`/catalogue/${id}/avis`),
       ]);
       setCourse(courseResponse);
+      if (!courseResponse.classesDisponibles) setSelectedOffer("content");
       setReviews(Array.isArray(reviewResponse?.content)
         ? reviewResponse
         : {moyenne: 0, nombre: 0, content: [], page: 0, totalPages: 0});
@@ -78,6 +83,14 @@ export default function CourseDetail() {
     // The request deliberately owns the loading state for the initial page load.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const revalidate = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", revalidate);
+    return () => document.removeEventListener("visibilitychange", revalidate);
   }, [load]);
 
   function participantOrLogin() {
@@ -98,18 +111,16 @@ export default function CourseDetail() {
     setBusy(withClasses ? "classes" : "content");
     setError("");
     try {
-      const response = await api<{prixPaye?: number; devise?: string}>(
-        `/participant/formations/${id}/${withClasses ? "inscription-avec-classes" : "inscription"}`,
-        {
+      if (withClasses) {
+        const response = await api<{montant: number; devise: string}>(`/participant/formations/${id}/inscription-avec-classes`, {
           method: "POST",
-          headers: withClasses ? {"Idempotency-Key": crypto.randomUUID()} : undefined,
-        },
-      );
-      setNotice(
-        withClasses && response.prixPaye !== undefined
-          ? `Inscription confirmée à ${response.prixPaye} ${response.devise ?? "DH"}, option classes incluse.`
-          : "Votre inscription est confirmée. Le contenu est maintenant accessible.",
-      );
+          headers: {"Idempotency-Key": crypto.randomUUID()},
+        });
+        setNotice(`Inscription confirmée à ${response.montant} ${response.devise}, option classes incluse.`);
+      } else {
+        await api(`/participant/formations/${id}/inscription`, {method: "POST"});
+        setNotice("Votre inscription est confirmée. Le contenu est maintenant accessible.");
+      }
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -128,6 +139,7 @@ export default function CourseDetail() {
         headers: {"Idempotency-Key": crypto.randomUUID()},
       });
       setNotice(`Option classes ajoutée pour ${response.montant} ${response.devise}.`);
+      await load();
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -136,6 +148,10 @@ export default function CourseDetail() {
   }
 
   async function open(resourceId: number) {
+    if (course?.inscrit) {
+      router.push(`/apprentissage/${id}?ressource=${resourceId}`);
+      return;
+    }
     setBusy(`resource-${resourceId}`);
     setError("");
     try {
@@ -213,17 +229,22 @@ export default function CourseDetail() {
     }
   }
 
-  async function reportReview(reviewId: number) {
-    const motif = window.prompt("Pourquoi signalez-vous cet avis ?");
-    if (!motif?.trim()) return;
+  async function reportReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reportTarget || !reportReason.trim()) return;
+    setBusy("report-review");
     try {
-      await api(`/participant/avis/${reviewId}/signalement`, {
+      await api(`/participant/avis/${reportTarget.id}/signalement`, {
         method: "POST",
-        body: JSON.stringify({motif}),
+        body: JSON.stringify({motif: reportReason.trim()}),
       });
+      setReportTarget(null);
+      setReportReason("");
       setNotice("Signalement transmis à la modération.");
     } catch (reason) {
       setError((reason as Error).message);
+    } finally {
+      setBusy("");
     }
   }
 
@@ -274,7 +295,15 @@ export default function CourseDetail() {
             description: course.description,
             inLanguage: course.langue,
             provider: {"@type": "Organization", name: "NexaLearn"},
-            offers: {"@type": "Offer", price: course.prix, priceCurrency: "MAD"},
+            offers: [
+              {"@type": "Offer", name: "Contenu", price: course.prix, priceCurrency: "MAD"},
+              ...(course.classesDisponibles ? [{
+                "@type": "Offer",
+                name: "Contenu et classes",
+                price: course.prixAvecClasses,
+                priceCurrency: "MAD",
+              }] : []),
+            ],
             ...(reviews.nombre ? {aggregateRating: {
               "@type": "AggregateRating",
               ratingValue: reviews.moyenne,
@@ -301,33 +330,68 @@ export default function CourseDetail() {
             <FavoriteButton formationId={id} />
             <Button type="button" variant="ghost" onClick={shareCourse}><Share2 size={17} /> Partager la formation</Button>
             {!course.inscrit ? (
-              <div className="stack">
-                <div className="row">
-                  <Button loading={busy === "content"} onClick={() => enroll(false)}>
-                    {course.prix === 0 ? "S’inscrire gratuitement" : "Simuler l’achat"}
-                  </Button>
-                  <Button variant="secondary" loading={busy === "classes"} onClick={() => enroll(true)}>
-                    <UsersRound size={18} /> Choisir contenu + classes
-                  </Button>
-                </div>
-                <p className="purchase-note">
-                  Le paiement est entièrement simulé pour ce MVP. Aucune donnée bancaire n’est demandée.
-                  Le serveur confirme le prix de l’option classes lorsqu’elle est disponible.
+              <div className="purchase-panel">
+                <fieldset className="offer-selector" aria-describedby="purchase-note">
+                  <legend>Choisir une formule</legend>
+                  <label className="offer-option">
+                    <input
+                      type="radio"
+                      name="course-offer"
+                      value="content"
+                      checked={selectedOffer === "content"}
+                      onChange={() => setSelectedOffer("content")}
+                    />
+                    <span><strong>Contenu</strong><small>Parcours en autonomie</small></span>
+                    <strong>{course.prix === 0 ? "Gratuit" : `${course.prix} ${course.devise}`}</strong>
+                  </label>
+                  {course.classesDisponibles && (
+                    <label className="offer-option">
+                      <input
+                        type="radio"
+                        name="course-offer"
+                        value="classes"
+                        checked={selectedOffer === "classes"}
+                        onChange={() => setSelectedOffer("classes")}
+                      />
+                      <span><strong>Contenu + classes</strong><small>Parcours et séances affectées</small></span>
+                      <strong>{course.prixAvecClasses === 0 ? "Gratuit" : `${course.prixAvecClasses} ${course.devise}`}</strong>
+                    </label>
+                  )}
+                </fieldset>
+                <Button
+                  loading={busy === (selectedOffer === "classes" ? "classes" : "content")}
+                  onClick={() => enroll(selectedOffer === "classes")}
+                >
+                  {selectedOffer === "classes" && <UsersRound size={18} />}
+                  {course.prix === 0 && selectedOffer === "content" ? "S’inscrire gratuitement" : "Confirmer l’inscription simulée"}
+                </Button>
+                <p className="purchase-note" id="purchase-note">
+                  Paiement simulé pour ce MVP : aucune donnée bancaire n’est demandée. Le montant affiché vient du serveur.
                 </p>
               </div>
             ) : (
               <div className="row">
-                <Link className="button-link" href={`/apprentissage/${id}`}><Route size={17} /> Voir mon parcours</Link>
+                <Link className="button-link" href={`/apprentissage/${id}`}><Route size={17} /> Ouvrir le lecteur</Link>
                 <Link className="button-link" href={`/apprentissage/${id}/quiz`}>Passer les QCM</Link>
-                <Button variant="secondary" loading={busy === "upgrade"} onClick={upgradeClasses}>
-                  <UsersRound size={18} /> Ajouter les classes
-                </Button>
+                {course.typeAcces === "CONTENU" && course.classesDisponibles && (
+                  <Button variant="secondary" loading={busy === "upgrade"} onClick={upgradeClasses}>
+                    <UsersRound size={18} /> Ajouter les classes
+                    {course.supplementClasses > 0 ? ` · ${course.supplementClasses} ${course.devise}` : " · incluses"}
+                  </Button>
+                )}
               </div>
             )}
           </div>
           <div className="course-side">
             {course.imageUrl ? (
-              <Image unoptimized width={600} height={375} className="detail-cover" src={course.imageUrl} alt="" />
+              <Image
+                width={600}
+                height={375}
+                sizes="(max-width: 900px) calc(100vw - 40px), 420px"
+                className="detail-cover"
+                src={course.imageUrl}
+                alt=""
+              />
             ) : (
               <div className="course-side-placeholder"><BookOpen size={48} /></div>
             )}
@@ -346,15 +410,12 @@ export default function CourseDetail() {
               <strong>Ressource de formation</strong>
               <IconButton label="Fermer le lecteur" onClick={() => setActive(null)}><X size={18} /></IconButton>
             </div>
-            {active.type === "VIDEO" ? (
-              <video controls src={active.url} />
-            ) : active.type === "PDF" ? (
-              <iframe title="Document PDF" src={active.url} />
-            ) : active.type === "YOUTUBE" ? (
-              <Alert><a className="text-link" target="_blank" rel="noreferrer" href={active.url}>Ouvrir sur YouTube</a></Alert>
-            ) : (
-              <Image unoptimized width={1000} height={600} src={active.url} alt="Ressource de formation" />
-            )}
+            <LearningResourceViewer
+              access={active}
+              title={active.titre ?? "Ressource de formation"}
+              onRetry={() => open(active.resourceId)}
+              onVideoProgress={() => undefined}
+            />
           </section>
         )}
 
@@ -375,6 +436,9 @@ export default function CourseDetail() {
                     </div>
                     {module.verrouille && <LockKeyhole aria-label="verrouillé" size={20} />}
                   </header>
+                  {module.chapitres.length === 0 && (
+                    <p className="empty-module">Aucun chapitre disponible pour le moment</p>
+                  )}
                   {module.chapitres.map((chapter) => (
                     <section className="chapter" key={chapter.id}>
                       <div className="row spread">
@@ -521,7 +585,7 @@ export default function CourseDetail() {
                     <Button size="sm" variant="danger" onClick={() => deleteReview(review.id)}>Supprimer</Button>
                   </div>
                 ) : currentUser()?.role === "PARTICIPANT" ? (
-                  <button className="link-button" onClick={() => reportReview(review.id)}>Signaler cet avis</button>
+                  <button className="link-button" onClick={() => setReportTarget(review)}>Signaler cet avis</button>
                 ) : null}
               </article>
             ))}
@@ -530,6 +594,17 @@ export default function CourseDetail() {
       </main>
       <Footer />
       <Toast message={notice} onClose={() => setNotice("")} />
+      <Modal open={Boolean(reportTarget)} title="Signaler cet avis" description="Votre motif sera transmis à l’équipe de modération." onClose={() => setReportTarget(null)}>
+        <form className="stack" onSubmit={reportReview}>
+          <label>Motif du signalement
+            <textarea required minLength={5} maxLength={500} value={reportReason} onChange={(event) => setReportReason(event.target.value)} />
+          </label>
+          <div className="modal-actions">
+            <Button type="button" variant="secondary" disabled={busy === "report-review"} onClick={() => setReportTarget(null)}>Annuler</Button>
+            <Button type="submit" loading={busy === "report-review"}>Transmettre le signalement</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

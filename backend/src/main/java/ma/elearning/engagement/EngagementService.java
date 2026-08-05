@@ -600,9 +600,10 @@ public class EngagementService {
     }
 
     private ResumeResponse resumeResponse(LearningPosition position) {
-        String href = "/catalogue/" + position.getFormation().getId();
+        String href = "/apprentissage/" + position.getFormation().getId();
         if (position.getChapitre() != null) href += "?chapitre=" + position.getChapitre().getId();
-        if (position.getRessource() != null) href += "#ressource-" + position.getRessource().getId();
+        if (position.getRessource() != null) href = "/apprentissage/" + position.getFormation().getId()
+                + "?ressource=" + position.getRessource().getId();
         return new ResumeResponse(position.getFormation().getId(), position.getFormation().getTitre(),
                 position.getModule() == null ? null : position.getModule().getId(),
                 position.getModule() == null ? null : position.getModule().getTitre(),

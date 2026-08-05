@@ -7,6 +7,7 @@ import ma.elearning.formation.*;
 import ma.elearning.storage.ObjectStorage;
 import ma.elearning.engagement.*;
 import ma.elearning.user.*;
+import ma.elearning.virtualclass.ClasseRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.*;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -25,13 +27,16 @@ public class LearningService {
  private final ObjectStorage storage; private final int expiry;
  private final OperationAccesRepository operations;
  private final EngagementService engagement;
+ private final ClasseRepository classes;
  public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
   InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
-  @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations,EngagementService engagement){
+  @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations,EngagementService engagement,
+  ClasseRepository classes){
   this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
   this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
   this.operations=operations;
   this.engagement=engagement;
+  this.classes=classes;
  }
  @Transactional
  public UpgradeResponse upgrade(String email,Long formationId,String key){
@@ -78,10 +83,14 @@ public class LearningService {
  @Transactional(readOnly=true)
  public CatalogueDetail detail(Long id,String email){
   Formation f=published(id); boolean full=hasFullAccess(f,email);
+  Inscription inscription=email==null?null:inscriptions.findByParticipantEmailAndFormationId(email,id).orElse(null);
+  boolean classesDisponibles=f.getSupplementClasses().signum()>0||f.isClassesGratuites();
   int chapterCount=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
   return new CatalogueDetail(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),
-   f.getNiveau(),f.getCategorie(),f.getPrix(),"DH",f.getFormateur().getId(),f.getFormateur().getNom(),f.getModules().size(),chapterCount,
-   isParticipantEnrolled(email,id),f.getModules().stream().map(m->module(m,full)).toList());
+   f.getNiveau(),f.getCategorie(),f.getPrix(),f.getSupplementClasses(),f.getPrix().add(f.getSupplementClasses()),
+   f.isClassesGratuites(),classesDisponibles,"DH",f.getFormateur().getId(),f.getFormateur().getNom(),
+   f.getModules().size(),chapterCount,inscription!=null,inscription==null?null:inscription.getTypeAcces(),
+   f.getModules().stream().map(m->module(m,full)).toList());
  }
  @Transactional
  public InscriptionResponse enroll(String email,Long formationId){
@@ -102,10 +111,12 @@ public class LearningService {
   RessourcePedagogique r=ressources.findById(resourceId).orElseThrow(this::notFound);
   if(!r.getChapitre().getModule().getFormation().getId().equals(formationId))throw notFound();
   boolean preview=r.getChapitre().getModule().isApercuGratuit();
-  if(!preview&&!hasFullAccess(f,email))throw error(HttpStatus.FORBIDDEN,"CONTENT_LOCKED","Une inscription active est requise.");
+  boolean full=hasFullAccess(f,email);
+  if(!preview&&!full)throw error(HttpStatus.FORBIDDEN,"CONTENT_LOCKED","Une inscription active est requise.");
   String accessUrl=r.getType()==ResourceType.YOUTUBE?r.getUrlYoutube():storage.temporaryUrl(r.getCleStockage());
   if(email!=null&&isParticipantEnrolled(email,formationId))engagement.recordResourceConsultation(email,formationId,r);
-  return new ResourceAccess(r.getId(),r.getType(),accessUrl,expiry,false);
+  return new ResourceAccess(r.getId(),r.getType(),accessUrl,expiry,full&&r.isTelechargeable(),
+   r.getTitre(),r.getTypeMime(),r.getTaille());
  }
  @Transactional
  public ProgressResponse progress(String email,Long formationId,Long chapterId,boolean completed,int seconds){
@@ -139,8 +150,11 @@ public class LearningService {
  @Transactional(readOnly=true) public List<MyFormation> mine(String email){return inscriptions.findByParticipantEmailOrderByDateInscriptionDesc(email).stream().map(i->new MyFormation(i.getId(),i.getFormation().getId(),i.getFormation().getTitre(),i.getTypeAcces(),i.getStatut(),i.getProgression(),i.getPrixPaye(),i.getDevise())).toList();}
  private boolean isParticipantEnrolled(String email,Long id){return email!=null&&inscriptions.findByParticipantEmailAndFormationId(email,id).isPresent();}
  private CatalogueItem item(Formation f){int chapters=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
+  boolean offer=f.getSupplementClasses().signum()>0||f.isClassesGratuites();
+  boolean activeClass=classes.existsByFormationIdAndStatutAndDateFinGreaterThanEqual(f.getId(),"ACTIVE",LocalDate.now());
   return new CatalogueItem(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),f.getNiveau(),
-   f.getCategorie(),f.getPrix(),f.getFormateur().getNom(),f.getModules().size(),chapters);}
+   f.getCategorie(),f.getPrix(),f.getSupplementClasses(),f.getPrix().add(f.getSupplementClasses()),
+   offer,activeClass,f.getFormateur().getNom(),f.getModules().size(),chapters);}
  private PublicModule module(FormationModule m,boolean full){boolean locked=!full&&!m.isApercuGratuit();
   return new PublicModule(m.getId(),m.getTitre(),m.getDescription(),m.getPosition(),m.isApercuGratuit(),locked,
    m.getChapitres().stream().map(c->chapter(c,locked)).toList());}

@@ -1,94 +1,123 @@
 "use client";
-import {FormEvent,useCallback,useEffect,useState} from "react";
+import {DragEvent,FormEvent,useCallback,useEffect,useState} from "react";
 import Link from "next/link";
+import {GripVertical} from "lucide-react";
 import {useParams} from "next/navigation";
 import {AppShell} from "@/components/AppShell";
 import {Protected} from "@/components/Protected";
 import {FormationFields,formationPayload} from "@/components/FormationFields";
-import {ConfirmDialog} from "@/components/ui";
+import {ConfirmDialog,Modal} from "@/components/ui";
 import {api} from "@/lib/api";
 import {Chapitre,formatBytes,FormationDetail,FormationModule,ResourceType,Ressource} from "@/lib/formations";
+
+type EditTarget=
+  | {kind:"module";item:FormationModule}
+  | {kind:"chapter";item:Chapitre}
+  | {kind:"resource";item:Ressource};
 
 export default function FormationEditor(){
   const id=Number(useParams<{id:string}>().id);
   const [formation,setFormation]=useState<FormationDetail|null>(null),[error,setError]=useState(""),[notice,setNotice]=useState("");
-  const [confirmation,setConfirmation]=useState<{title:string;description:string;action:()=>Promise<void>}|null>(null),[confirmBusy,setConfirmBusy]=useState(false);
+  const [confirmation,setConfirmation]=useState<{title:string;description:string;action:()=>Promise<unknown>}|null>(null),[confirmBusy,setConfirmBusy]=useState(false);
+  const [editTarget,setEditTarget]=useState<EditTarget|null>(null),[editBusy,setEditBusy]=useState(false),[draggedModuleId,setDraggedModuleId]=useState<number|null>(null);
+  const [coverFile,setCoverFile]=useState<File|null>(null),[resourceFiles,setResourceFiles]=useState<Record<number,File|null>>({}),[uploading,setUploading]=useState("");
   const load=useCallback(()=>api<FormationDetail>(`/formateur/formations/${id}`).then(setFormation).catch(e=>setError(e.message)),[id]);
   useEffect(()=>{load()},[load]);
   async function run(action:()=>Promise<unknown>,message="Modification enregistrée"){
     setError("");setNotice("");
-    try{await action();await load();setNotice(message)}catch(e){setError((e as Error).message)}
+    try{await action();await load();setNotice(message);return true}catch(e){setError((e as Error).message);return false}
   }
   async function updateFormation(event:FormEvent<HTMLFormElement>){
     event.preventDefault();await run(()=>api(`/formateur/formations/${id}`,{method:"PUT",body:JSON.stringify(formationPayload(event.currentTarget))}));
   }
   async function uploadCover(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();const data=new FormData(event.currentTarget);
-    await run(()=>api(`/formateur/formations/${id}/couverture`,{method:"POST",body:data}),"Couverture envoyée");
+    event.preventDefault();const form=event.currentTarget,data=new FormData(form);
+    setUploading("cover");try{if(await run(()=>api(`/formateur/formations/${id}/couverture`,{method:"POST",body:data}),"Couverture envoyée")){form.reset();setCoverFile(null)}}finally{setUploading("")}
   }
   async function addModule(event:FormEvent<HTMLFormElement>){
     event.preventDefault();const form=event.currentTarget,data=new FormData(form);
-    await run(()=>api(`/formateur/formations/${id}/modules`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),description:data.get("description"),apercuGratuit:data.get("apercu")==="on"})}),"Module ajouté");form.reset();
-  }
-  async function editModule(module:FormationModule){
-    const titre=prompt("Titre du module",module.titre);if(!titre)return;
-    const description=prompt("Description du module",module.description??"")??module.description??"";
-    await run(()=>api(`/formateur/modules/${module.id}`,{method:"PUT",body:JSON.stringify({titre,description,apercuGratuit:module.apercuGratuit})}));
+    if(await run(()=>api(`/formateur/formations/${id}/modules`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),description:data.get("description"),apercuGratuit:data.get("apercu")==="on"})}),"Module ajouté"))form.reset();
   }
   async function togglePreview(module:FormationModule){
     await run(()=>api(`/formateur/modules/${module.id}`,{method:"PUT",body:JSON.stringify({titre:module.titre,description:module.description??"",apercuGratuit:!module.apercuGratuit})}));
   }
   async function addChapter(event:FormEvent<HTMLFormElement>,moduleId:number){
     event.preventDefault();const form=event.currentTarget,data=new FormData(form);
-    await run(()=>api(`/formateur/modules/${moduleId}/chapitres`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),description:data.get("description")})}),"Chapitre ajouté");form.reset();
-  }
-  async function editChapter(chapter:Chapitre){
-    const titre=prompt("Titre du chapitre",chapter.titre);if(!titre)return;
-    const description=prompt("Description du chapitre",chapter.description??"")??chapter.description??"";
-    await run(()=>api(`/formateur/chapitres/${chapter.id}`,{method:"PUT",body:JSON.stringify({titre,description})}));
+    if(await run(()=>api(`/formateur/modules/${moduleId}/chapitres`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),description:data.get("description")})}),"Chapitre ajouté"))form.reset();
   }
   async function uploadResource(event:FormEvent<HTMLFormElement>,chapterId:number){
     event.preventDefault();const form=event.currentTarget,data=new FormData(form);
-    await run(()=>api(`/formateur/chapitres/${chapterId}/ressources/fichier`,{method:"POST",body:data}),"Fichier envoyé");form.reset();
+    setUploading(`resource-${chapterId}`);try{if(await run(()=>api(`/formateur/chapitres/${chapterId}/ressources/fichier`,{method:"POST",body:data}),"Fichier envoyé")){form.reset();setResourceFiles(current=>({...current,[chapterId]:null}))}}finally{setUploading("")}
   }
   async function addYoutube(event:FormEvent<HTMLFormElement>,chapterId:number){
     event.preventDefault();const form=event.currentTarget,data=new FormData(form);
-    await run(()=>api(`/formateur/chapitres/${chapterId}/ressources/youtube`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),urlYoutube:data.get("urlYoutube")})}),"Lien YouTube ajouté");form.reset();
+    if(await run(()=>api(`/formateur/chapitres/${chapterId}/ressources/youtube`,{method:"POST",body:JSON.stringify({titre:data.get("titre"),urlYoutube:data.get("urlYoutube")})}),"Lien YouTube ajouté"))form.reset();
   }
   function move<T extends {id:number}>(items:T[],index:number,direction:-1|1,path:string){
     const target=index+direction;if(target<0||target>=items.length)return;
     const reordered=[...items];[reordered[index],reordered[target]]=[reordered[target],reordered[index]];
     run(()=>api(path,{method:"PUT",body:JSON.stringify({ids:reordered.map(x=>x.id)})}),"Ordre mis à jour");
   }
-  async function editResource(resource:Ressource){
-    const titre=prompt("Titre de la ressource",resource.titre);if(!titre)return;
-    await run(()=>api(`/formateur/ressources/${resource.id}`,{method:"PUT",body:JSON.stringify({titre,telechargeable:resource.telechargeable})}));
+  function dropModule(event:DragEvent<HTMLElement>,targetId:number){
+    event.preventDefault();
+    if(draggedModuleId===null||draggedModuleId===targetId)return setDraggedModuleId(null);
+    const from=formation?.modules.findIndex(module=>module.id===draggedModuleId)??-1;
+    const to=formation?.modules.findIndex(module=>module.id===targetId)??-1;
+    if(!formation||from<0||to<0)return setDraggedModuleId(null);
+    const reordered=[...formation.modules];const [dragged]=reordered.splice(from,1);reordered.splice(to,0,dragged);
+    setDraggedModuleId(null);
+    void run(()=>api(`/formateur/formations/${id}/modules/ordre`,{method:"PUT",body:JSON.stringify({ids:reordered.map(module=>module.id)})}),"Ordre mis à jour");
   }
-  async function confirmAction(){if(!confirmation)return;setConfirmBusy(true);try{await confirmation.action();setConfirmation(null)}finally{setConfirmBusy(false)}}
+  async function saveEdit(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();if(!editTarget)return;
+    const data=new FormData(event.currentTarget),titre=String(data.get("titre")??""),description=String(data.get("description")??"");
+    setEditBusy(true);
+    try{
+      let saved=false;
+      if(editTarget.kind==="module")saved=await run(()=>api(`/formateur/modules/${editTarget.item.id}`,{method:"PUT",body:JSON.stringify({titre,description,apercuGratuit:data.get("apercuGratuit")==="on"})}));
+      if(editTarget.kind==="chapter")saved=await run(()=>api(`/formateur/chapitres/${editTarget.item.id}`,{method:"PUT",body:JSON.stringify({titre,description})}));
+      if(editTarget.kind==="resource")saved=await run(()=>api(`/formateur/ressources/${editTarget.item.id}`,{method:"PUT",body:JSON.stringify({titre,telechargeable:data.get("telechargeable")==="on"})}));
+      if(saved)setEditTarget(null);
+    }finally{setEditBusy(false)}
+  }
+  async function confirmAction(){if(!confirmation)return;setConfirmBusy(true);try{if(await confirmation.action())setConfirmation(null)}finally{setConfirmBusy(false)}}
   if(!formation)return <Protected role="FORMATEUR"><AppShell role="FORMATEUR"><div className="route-loading"><div>{error||"Chargement…"}</div></div></AppShell></Protected>;
   return <Protected role="FORMATEUR"><AppShell role="FORMATEUR"><section className="wide editor">
-    <header className="page-header"><div><Link href="/formateur/formations">← Mes formations</Link><h1>{formation.titre}</h1><span className="badge">{formation.statut}</span></div><div className="row"><Link className="button-link" href={`/formateur/formations/${id}/quiz`}>Gérer les QCM</Link><button onClick={()=>run(()=>api(`/formateur/formations/${id}/statut`,{method:"PUT",body:JSON.stringify({statut:formation.statut==="PUBLIEE"?"DEPUBLIEE":"PUBLIEE"})}),formation.statut==="PUBLIEE"?"Formation dépubliée":"Formation publiée")}>{formation.statut==="PUBLIEE"?"Dépublier":"Publier"}</button></div></header>
+    <header className="page-header"><div><Link href="/formateur/formations">← Mes formations</Link><h1>{formation.titre}</h1><span className="badge">{formation.statut}</span></div><div className="row">{formation.statut==="PUBLIEE"?<Link className="secondary button-link" href={`/catalogue/${id}`}>Aperçu participant</Link>:<span className="muted" title="Publiez la formation pour ouvrir son aperçu public">Aperçu disponible après publication</span>}<Link className="button-link" href={`/formateur/formations/${id}/quiz`}>Gérer les QCM</Link><button onClick={()=>run(()=>api(`/formateur/formations/${id}/statut`,{method:"PUT",body:JSON.stringify({statut:formation.statut==="PUBLIEE"?"DEPUBLIEE":"PUBLIEE"})}),formation.statut==="PUBLIEE"?"Formation dépubliée":"Formation publiée")}>{formation.statut==="PUBLIEE"?"Dépublier":"Publier"}</button></div></header>
     {error&&<p className="message error">{error}</p>}{notice&&<p className="message">{notice}</p>}
     <details className="card panel"><summary>Informations de la formation</summary>
       <form className="stack section-space" onSubmit={updateFormation}><FormationFields initial={formation}/><button>Enregistrer</button></form>
-      <form className="stack upload-box" onSubmit={uploadCover}><label>Image de couverture<input name="file" type="file" accept=".jpg,.jpeg,.png,.webp" required/></label><button>Envoyer la couverture</button></form>
+      <form className="stack upload-box" onSubmit={uploadCover}><label>Image de couverture<input name="file" type="file" accept=".jpg,.jpeg,.png,.webp" required onChange={event=>setCoverFile(event.target.files?.[0]??null)}/></label>{coverFile&&<FileSummary file={coverFile}/>}<button disabled={uploading==="cover"} aria-busy={uploading==="cover"}>{uploading==="cover"?"Envoi sécurisé…":"Envoyer la couverture"}</button></form>
     </details>
     <section className="card panel"><div className="row spread"><div><h2>Programme</h2><p className="muted">{formation.modules.length} module(s)</p></div></div>
       <form className="inline-form" onSubmit={addModule}><input name="titre" placeholder="Titre du module" required maxLength={180}/><input name="description" placeholder="Description"/><label className="check"><input name="apercu" type="checkbox"/> Aperçu gratuit</label><button>Ajouter</button></form>
-      <div className="module-list">{formation.modules.map((module,moduleIndex)=><article className="module" key={module.id}>
-        <header className="row spread"><div><span className="order">{moduleIndex+1}</span><strong>{module.titre}</strong>{module.apercuGratuit&&<span className="badge preview">Aperçu gratuit</span>}</div>
-          <div className="row compact"><button className="icon" title="Monter" onClick={()=>move(formation.modules,moduleIndex,-1,`/formateur/formations/${id}/modules/ordre`)}>↑</button><button className="icon" title="Descendre" onClick={()=>move(formation.modules,moduleIndex,1,`/formateur/formations/${id}/modules/ordre`)}>↓</button><button className="secondary small" onClick={()=>editModule(module)}>Modifier</button>{moduleIndex===0&&<button className="secondary small" onClick={()=>togglePreview(module)}>{module.apercuGratuit?"Retirer l’aperçu":"Aperçu gratuit"}</button>}<button className="danger small" onClick={()=>setConfirmation({title:"Supprimer ce module ?",description:"Tous ses chapitres et ressources seront également supprimés. Cette action est irréversible.",action:()=>run(()=>api(`/formateur/modules/${module.id}`,{method:"DELETE"}),"Module supprimé")})}>Supprimer</button></div></header>
+      <div className="module-list">{formation.modules.map((module,moduleIndex)=><article className={`module ${draggedModuleId===module.id?"is-dragging":""}`} key={module.id} onDragOver={event=>event.preventDefault()} onDrop={event=>dropModule(event,module.id)}>
+        <header className="row spread"><div className="module-identity"><span className="drag-handle" draggable onDragStart={event=>{event.dataTransfer.effectAllowed="move";setDraggedModuleId(module.id)}} onDragEnd={()=>setDraggedModuleId(null)} title="Faire glisser pour réordonner"><GripVertical aria-hidden="true" size={18}/></span><span className="order">{moduleIndex+1}</span><strong>{module.titre}</strong>{module.apercuGratuit&&<span className="badge preview">Aperçu gratuit</span>}</div>
+          <div className="row compact"><button type="button" className="icon" aria-label={`Monter le module ${module.titre}`} disabled={moduleIndex===0} onClick={()=>move(formation.modules,moduleIndex,-1,`/formateur/formations/${id}/modules/ordre`)}>↑</button><button type="button" className="icon" aria-label={`Descendre le module ${module.titre}`} disabled={moduleIndex===formation.modules.length-1} onClick={()=>move(formation.modules,moduleIndex,1,`/formateur/formations/${id}/modules/ordre`)}>↓</button><button type="button" className="secondary small" onClick={()=>setEditTarget({kind:"module",item:module})}>Modifier</button>{moduleIndex===0&&<button type="button" className="secondary small" onClick={()=>togglePreview(module)}>{module.apercuGratuit?"Retirer l’aperçu":"Aperçu gratuit"}</button>}<button type="button" className="danger small" onClick={()=>setConfirmation({title:"Supprimer ce module ?",description:"Tous ses chapitres et ressources seront également supprimés. Cette action est irréversible.",action:()=>run(()=>api(`/formateur/modules/${module.id}`,{method:"DELETE"}),"Module supprimé")})}>Supprimer</button></div></header>
         {module.description&&<p className="muted">{module.description}</p>}
         <form className="inline-form nested-form" onSubmit={e=>addChapter(e,module.id)}><input name="titre" placeholder="Nouveau chapitre" required maxLength={180}/><input name="description" placeholder="Description"/><button>Ajouter le chapitre</button></form>
         <div>{module.chapitres.map((chapter,chapterIndex)=><article className="chapter" key={chapter.id}>
           <header className="row spread"><div><span className="order subtle">{chapterIndex+1}</span><strong>{chapter.titre}</strong></div><div className="row compact">
-            <button className="icon" onClick={()=>move(module.chapitres,chapterIndex,-1,`/formateur/modules/${module.id}/chapitres/ordre`)}>↑</button><button className="icon" onClick={()=>move(module.chapitres,chapterIndex,1,`/formateur/modules/${module.id}/chapitres/ordre`)}>↓</button><button className="secondary small" onClick={()=>editChapter(chapter)}>Modifier</button><button className="danger small" onClick={()=>setConfirmation({title:"Supprimer ce chapitre ?",description:"Les ressources liées à ce chapitre seront supprimées. Cette action est irréversible.",action:()=>run(()=>api(`/formateur/chapitres/${chapter.id}`,{method:"DELETE"}),"Chapitre supprimé")})}>Supprimer</button></div></header>
-          <div className="resource-list">{chapter.ressources.map((resource,resourceIndex)=><div className="resource" key={resource.id}><div><span className="resource-type">{resource.type}</span> <b>{resource.titre}</b><div className="muted tiny">{resource.nomOriginal}{resource.taille?` · ${formatBytes(resource.taille)}`:""}{resource.telechargeable?" · Téléchargeable":""}{resource.urlYoutube?` · ${resource.urlYoutube}`:""}</div></div><div className="row compact"><button className="icon" onClick={()=>move(chapter.ressources,resourceIndex,-1,`/formateur/chapitres/${chapter.id}/ressources/ordre`)}>↑</button><button className="icon" onClick={()=>move(chapter.ressources,resourceIndex,1,`/formateur/chapitres/${chapter.id}/ressources/ordre`)}>↓</button><button className="secondary small" onClick={()=>editResource(resource)}>Modifier</button><button className="danger small" onClick={()=>setConfirmation({title:"Supprimer cette ressource ?",description:"Le fichier ou le lien sera retiré définitivement de ce chapitre.",action:()=>run(()=>api(`/formateur/ressources/${resource.id}`,{method:"DELETE"}),"Ressource supprimée")})}>Supprimer</button></div></div>)}</div>
-          <div className="resource-forms"><form className="upload-box stack" onSubmit={e=>uploadResource(e,chapter.id)}><b>Ajouter un fichier</b><input name="titre" placeholder="Titre" required maxLength={180}/><select name="type" defaultValue={"PDF" satisfies ResourceType}><option value="PDF">PDF</option><option value="VIDEO">Vidéo</option><option value="IMAGE">Image</option></select><input name="file" type="file" accept=".pdf,.mp4,.webm,.jpg,.jpeg,.png,.webp" required/><label className="check"><input name="telechargeable" type="checkbox"/> Téléchargeable</label><button>Envoyer</button></form>
+            <button type="button" className="icon" aria-label={`Monter le chapitre ${chapter.titre}`} disabled={chapterIndex===0} onClick={()=>move(module.chapitres,chapterIndex,-1,`/formateur/modules/${module.id}/chapitres/ordre`)}>↑</button><button type="button" className="icon" aria-label={`Descendre le chapitre ${chapter.titre}`} disabled={chapterIndex===module.chapitres.length-1} onClick={()=>move(module.chapitres,chapterIndex,1,`/formateur/modules/${module.id}/chapitres/ordre`)}>↓</button><button type="button" className="secondary small" onClick={()=>setEditTarget({kind:"chapter",item:chapter})}>Modifier</button><button type="button" className="danger small" onClick={()=>setConfirmation({title:"Supprimer ce chapitre ?",description:"Les ressources liées à ce chapitre seront supprimées. Cette action est irréversible.",action:()=>run(()=>api(`/formateur/chapitres/${chapter.id}`,{method:"DELETE"}),"Chapitre supprimé")})}>Supprimer</button></div></header>
+          <div className="resource-list">{chapter.ressources.map((resource,resourceIndex)=><div className="resource" key={resource.id}><div><span className="resource-type">{resource.type}</span> <b>{resource.titre}</b><div className="muted tiny">{resource.nomOriginal}{resource.taille?` · ${formatBytes(resource.taille)}`:""}{resource.telechargeable?" · Téléchargeable":""}{resource.urlYoutube?` · ${resource.urlYoutube}`:""}</div></div><div className="row compact"><button type="button" className="icon" aria-label={`Monter la ressource ${resource.titre}`} disabled={resourceIndex===0} onClick={()=>move(chapter.ressources,resourceIndex,-1,`/formateur/chapitres/${chapter.id}/ressources/ordre`)}>↑</button><button type="button" className="icon" aria-label={`Descendre la ressource ${resource.titre}`} disabled={resourceIndex===chapter.ressources.length-1} onClick={()=>move(chapter.ressources,resourceIndex,1,`/formateur/chapitres/${chapter.id}/ressources/ordre`)}>↓</button><button type="button" className="secondary small" onClick={()=>setEditTarget({kind:"resource",item:resource})}>Modifier</button><button type="button" className="danger small" onClick={()=>setConfirmation({title:"Supprimer cette ressource ?",description:"Le fichier ou le lien sera retiré définitivement de ce chapitre.",action:()=>run(()=>api(`/formateur/ressources/${resource.id}`,{method:"DELETE"}),"Ressource supprimée")})}>Supprimer</button></div></div>)}</div>
+          <div className="resource-forms"><form className="upload-box stack" onSubmit={e=>uploadResource(e,chapter.id)}><b>Ajouter un fichier</b><input name="titre" placeholder="Titre" required maxLength={180}/><select name="type" defaultValue={"PDF" satisfies ResourceType}><option value="PDF">PDF</option><option value="VIDEO">Vidéo</option><option value="IMAGE">Image</option></select><input name="file" type="file" accept=".pdf,.mp4,.webm,.jpg,.jpeg,.png,.webp" required onChange={event=>setResourceFiles(current=>({...current,[chapter.id]:event.target.files?.[0]??null}))}/>{resourceFiles[chapter.id]&&<FileSummary file={resourceFiles[chapter.id]!}/>}<label className="check"><input name="telechargeable" type="checkbox"/> Téléchargeable</label><button disabled={uploading===`resource-${chapter.id}`} aria-busy={uploading===`resource-${chapter.id}`}>{uploading===`resource-${chapter.id}`?"Envoi sécurisé…":"Envoyer"}</button></form>
             <form className="upload-box stack" onSubmit={e=>addYoutube(e,chapter.id)}><b>Ajouter un lien YouTube</b><input name="titre" placeholder="Titre" required maxLength={180}/><input name="urlYoutube" type="url" placeholder="https://youtube.com/watch?v=…" required/><button>Ajouter le lien</button></form></div>
         </article>)}</div>
       </article>)}</div>
     </section>
+    <Modal open={Boolean(editTarget)} title={editTarget?.kind==="module"?"Modifier le module":editTarget?.kind==="chapter"?"Modifier le chapitre":"Modifier la ressource"} description="Les modifications sont enregistrées sur le serveur puis répercutées dans le programme." onClose={()=>setEditTarget(null)}>
+      {editTarget&&<form className="stack" onSubmit={saveEdit}>
+        <label>Titre<input name="titre" required maxLength={180} defaultValue={editTarget.item.titre}/></label>
+        {editTarget.kind!=="resource"&&<label>Description<textarea name="description" maxLength={10000} defaultValue={editTarget.item.description??""}/></label>}
+        {editTarget.kind==="module"&&editTarget.item.ordre===0&&<label className="check"><input name="apercuGratuit" type="checkbox" defaultChecked={editTarget.item.apercuGratuit}/> Module disponible en aperçu gratuit</label>}
+        {editTarget.kind==="resource"&&<label className="check"><input name="telechargeable" type="checkbox" defaultChecked={editTarget.item.telechargeable}/> Ressource téléchargeable</label>}
+        <div className="modal-actions"><button type="button" className="secondary" onClick={()=>setEditTarget(null)} disabled={editBusy}>Annuler</button><button disabled={editBusy}>{editBusy?"Enregistrement…":"Enregistrer"}</button></div>
+      </form>}
+    </Modal>
     <ConfirmDialog open={Boolean(confirmation)} title={confirmation?.title??""} description={confirmation?.description??""} confirmLabel="Supprimer" danger busy={confirmBusy} onCancel={()=>setConfirmation(null)} onConfirm={confirmAction}/>
   </section></AppShell></Protected>
+}
+
+function FileSummary({file}:{file:File}){
+  return <p className="file-summary" role="status"><strong>{file.name}</strong><span>{file.type||"Type non déclaré"} · {formatBytes(file.size)}</span></p>;
 }

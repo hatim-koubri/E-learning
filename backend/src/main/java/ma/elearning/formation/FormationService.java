@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.math.RoundingMode;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Service
@@ -383,10 +385,30 @@ public class FormationService {
                     host.equals("m.youtube.com") || host.equals("youtu.be");
             if (!"https".equalsIgnoreCase(uri.getScheme()) || !allowedHost || uri.getUserInfo() != null ||
                     (uri.getPort() != -1 && uri.getPort() != 443) || uri.getPath().isBlank()) throw invalidYoutube();
-            return uri.normalize().toASCIIString();
+            String id = youtubeId(uri, host);
+            if (id == null || !id.matches("[A-Za-z0-9_-]{3,32}")) throw invalidYoutube();
+            return "https://www.youtube.com/watch?v=" + id;
         } catch (URISyntaxException | NullPointerException ex) {
             throw invalidYoutube();
         }
+    }
+
+    private String youtubeId(URI uri, String host) {
+        String[] segments = Arrays.stream(uri.getPath().split("/"))
+                .filter(value -> !value.isBlank()).toArray(String[]::new);
+        if (host.equals("youtu.be")) return segments.length == 1 ? segments[0] : null;
+        if (uri.getPath().equals("/watch")) {
+            if (uri.getRawQuery() == null) return null;
+            for (String pair : uri.getRawQuery().split("&")) {
+                String[] values = pair.split("=", 2);
+                if (URLDecoder.decode(values[0], StandardCharsets.UTF_8).equals("v")) {
+                    return values.length == 2 ? URLDecoder.decode(values[1], StandardCharsets.UTF_8) : null;
+                }
+            }
+            return null;
+        }
+        return segments.length == 2 && (segments[0].equals("shorts") || segments[0].equals("embed"))
+                ? segments[1] : null;
     }
 
     private BusinessException invalidYoutube() {
