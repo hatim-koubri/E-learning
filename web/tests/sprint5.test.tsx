@@ -12,14 +12,23 @@ import OnboardingPage from "@/app/participant/onboarding/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import {FavoriteButton} from "@/components/FavoriteButton";
-import {api, currentUser} from "@/lib/api";
+import {api, ApiRequestError, currentUser} from "@/lib/api";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
   useParams: () => ({id: "7", formationId: "7"}),
   useRouter: () => ({replace, push: vi.fn()}),
 }));
-vi.mock("@/lib/api", () => ({api: vi.fn(), currentUser: vi.fn()}));
+vi.mock("@/lib/api", () => ({
+  api: vi.fn(),
+  currentUser: vi.fn(),
+  ApiRequestError: class ApiRequestError extends Error {
+    constructor(message: string, public readonly status: number, public readonly code?: string) {
+      super(message);
+      this.name = "ApiRequestError";
+    }
+  },
+}));
 
 const apiMock = vi.mocked(api);
 const currentMock = vi.mocked(currentUser);
@@ -149,8 +158,8 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     expect(apiMock).toHaveBeenCalledWith("/notifications/preferences", expect.objectContaining({method: "PUT"}));
   });
 
-  it("rend la carte interactive et son alternative accessible", async () => {
-    apiMock.mockResolvedValue({
+  it("affiche le lecteur et l’état utile d’un parcours sans ressource", async () => {
+    const journey = {
       formationId: 7, titre: "Java moderne", progression: 50,
       modules: [
         {id: 1, titre: "Fondations", etat: "TERMINE", progression: 100,
@@ -159,13 +168,14 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
           chapitres: [{id: 4, titre: "Projet", etat: "DISPONIBLE", progression: 0, ressources: []},
             {id: 5, titre: "Expert", etat: "VERROUILLE", progression: 0, ressources: []}]},
       ],
-    });
+    };
+    apiMock.mockImplementation(async (path) => path.includes("/parcours") ? journey : []);
     render(<LearningJourneyPage />);
 
-    expect(await screen.findByRole("heading", {name: "Java moderne"})).toBeInTheDocument();
-    expect(screen.getByText("50% du cours terminé")).toBeInTheDocument();
-    expect(screen.getByText("Alternative accessible sous forme de liste")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", {name: "Ouvrir"})).toHaveLength(2);
+    expect(await screen.findByText("Java moderne")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", {name: "Progression du cours"})).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByRole("heading", {name: "Aucune ressource disponible"})).toBeInTheDocument();
+    expect(screen.getByText("Fondations")).toBeInTheDocument();
   });
 
   it("permet au formateur de répondre et de mettre à jour son profil public", async () => {
@@ -199,6 +209,68 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     await user.type(screen.getByLabelText("Spécialité"), "Architecture Java");
     await user.click(screen.getByRole("button", {name: "Enregistrer"}));
     expect(await screen.findByText("Profil public mis à jour.")).toBeInTheDocument();
+  });
+
+  it("affiche un état vide utile lorsque le formateur ne possède aucune donnée", async () => {
+    currentMock.mockReturnValue(trainer);
+    localStorage.setItem("user", JSON.stringify(trainer));
+    apiMock.mockImplementation(async (path) => {
+      if (path === "/formateur/engagement") return {inscriptions: 0, avisPublies: 0, moyenneAvis: 0, avis: []};
+      if (path === "/formateurs/2") return {
+        id: 2, nom: "Sara", specialite: "", biographie: "", apprenants: 0, moyenneAvis: 0, formations: [],
+      };
+      return {};
+    });
+
+    render(<TrainerEngagementPage />);
+
+    expect(await screen.findByRole("heading", {name: "Aucune donnée d’engagement pour le moment"})).toBeInTheDocument();
+    expect(screen.getByText(/Publiez une formation et accueillez vos premiers participants/)).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Voir mes formations"})).toHaveAttribute("href", "/formateur/formations");
+    expect(screen.queryByText("Inscriptions réelles")).not.toBeInTheDocument();
+  });
+
+  it("distingue une panne serveur et Réessayer relance réellement l’engagement", async () => {
+    currentMock.mockReturnValue(trainer);
+    localStorage.setItem("user", JSON.stringify(trainer));
+    let engagementCalls = 0;
+    apiMock.mockImplementation(async (path) => {
+      if (path === "/formateur/engagement") {
+        engagementCalls += 1;
+        if (engagementCalls === 1) throw new ApiRequestError("Internal Server Error", 500);
+        return {inscriptions: 0, avisPublies: 0, moyenneAvis: 0, avis: []};
+      }
+      if (path === "/formateurs/2") return {
+        id: 2, nom: "Sara", specialite: "", biographie: "", apprenants: 0, moyenneAvis: 0, formations: [],
+      };
+      return {};
+    });
+    const user = userEvent.setup();
+    render(<TrainerEngagementPage />);
+
+    expect(await screen.findByRole("heading", {name: "Service d’engagement indisponible"})).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Réessayer"}));
+
+    expect(await screen.findByRole("heading", {name: "Aucune donnée d’engagement pour le moment"})).toBeInTheDocument();
+    expect(engagementCalls).toBe(2);
+  });
+
+  it.each([
+    [401, "Session expirée"],
+    [403, "Accès formateur refusé"],
+  ])("distingue explicitement le statut HTTP %s", async (status, title) => {
+    currentMock.mockReturnValue(trainer);
+    localStorage.setItem("user", JSON.stringify(trainer));
+    apiMock.mockImplementation(async (path) => {
+      if (path === "/formateur/engagement") throw new ApiRequestError("Erreur contrôlée", status);
+      if (path === "/formateurs/2") return {
+        id: 2, nom: "Sara", specialite: "", biographie: "", apprenants: 0, moyenneAvis: 0, formations: [],
+      };
+      return {};
+    });
+
+    render(<TrainerEngagementPage />);
+    expect(await screen.findByRole("heading", {name: title})).toBeInTheDocument();
   });
 
   it("modère un signalement sans modifier la note", async () => {

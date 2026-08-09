@@ -20,7 +20,7 @@ function PasswordField({
   const [visible, setVisible] = useState(false);
   const inputId = `${name}-field`;
   return (
-    <div className="stack" style={{gap: 7}}>
+    <div className="stack stack-tight">
       <label htmlFor={inputId}>{label}</label>
       <span className="input-with-action">
         <input

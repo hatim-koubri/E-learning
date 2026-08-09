@@ -59,4 +59,15 @@ describe("espaces applicatifs",()=>{
   await user.type(title,"Fondations");await user.click(screen.getByRole("button",{name:"Ajouter"}));
   await waitFor(()=>expect(apiMock).toHaveBeenCalledWith("/formateur/formations/12/modules",expect.objectContaining({method:"POST"})));
  });
+ it("garde le brouillon et sa saisie quand le serveur refuse un module",async()=>{
+  userMock.mockReturnValue({id:4,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
+  const detail={id:12,titre:"Cours",description:"Desc",langue:"fr",niveau:"DEBUTANT",categorie:"Dev",prix:0,statut:"BROUILLON",createdAt:"",updatedAt:"",modules:[]};
+  apiMock.mockResolvedValueOnce(detail).mockRejectedValueOnce(new Error("Le module doit être complété"));
+  const user=userEvent.setup();render(<FormationEditor/>);const title=await screen.findByPlaceholderText("Titre du module");
+  expect(screen.queryByRole("link",{name:"Aperçu participant"})).not.toBeInTheDocument();
+  expect(screen.getByText("Aperçu disponible après publication")).toBeInTheDocument();
+  await user.type(title,"Fondations incomplètes");await user.click(screen.getByRole("button",{name:"Ajouter"}));
+  expect(await screen.findByText("Le module doit être complété")).toBeInTheDocument();
+  expect(title).toHaveValue("Fondations incomplètes");
+ });
 });

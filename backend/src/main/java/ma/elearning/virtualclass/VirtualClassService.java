@@ -39,6 +39,9 @@ public class VirtualClassService {
    if(i.getTypeAcces()!=TypeAcces.CONTENU_ET_CLASSES||!membres.existsByClasseIdAndParticipantEmailAndStatut(s.getClasse().getId(),email,"ACCEPTE"))throw error(HttpStatus.FORBIDDEN,"ACCESS_DENIED","Vous n'êtes pas membre de cette classe.");}
   else if(!owner)throw notFound();
   if(!"PLANIFIEE".equals(s.getStatut()))throw error(HttpStatus.CONFLICT,"SESSION_UNAVAILABLE","Cette séance est inaccessible.");
+  Instant now=Instant.now();
+  if(now.isBefore(s.getDateDebut())||!now.isBefore(s.getDateFin()))
+   throw error(HttpStatus.CONFLICT,"SESSION_NOT_ACTIVE","Cette séance peut être rejointe uniquement entre son début et sa fin.");
   if(!trainer)engagement.recordActivity(email,s.getClasse().getFormation().getId(),ActivityType.CLASSE_REJOINTE,"class-session:"+sessionId,30);
   String url=jitsi+"/"+URLEncoder.encode(s.getIdentifiantSalle(),StandardCharsets.UTF_8);return new JoinResponse(s.getId(),s.getIdentifiantSalle(),jitsi,url);
  }

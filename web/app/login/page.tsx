@@ -12,7 +12,7 @@ export default function Page() {
     >
       <LoginForm />
       <GuestOnly>
-        <div className="auth-links" style={{marginTop: 20}}>
+        <div className="auth-links auth-links-spaced">
           <span>Vous transmettez votre expertise ?</span>
           <Link href="/register/formateur">Devenir formateur</Link>
         </div>

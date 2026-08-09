@@ -13,6 +13,7 @@ import {FormEvent, useCallback, useEffect, useMemo, useState} from "react";
 import {AppShell} from "@/components/AppShell";
 import {PageHeader} from "@/components/PageHeader";
 import {Protected} from "@/components/Protected";
+import {isSessionJoinable, SessionTiming, useSessionClock} from "@/components/SessionTiming";
 import {Alert, Badge, Button, Card, ConfirmDialog, EmptyState, Modal, Skeleton} from "@/components/ui";
 import {api} from "@/lib/api";
 import type {Classe, Session} from "@/lib/classes";
@@ -21,16 +22,6 @@ import type {FormationSummary} from "@/lib/formations";
 type Eligible = {id: number; nom: string; email: string};
 const timezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const iso = (value: FormDataEntryValue | null) => new Date(String(value)).toISOString();
-
-function sessionStatus(session: Session) {
-  if (session.statut === "ANNULEE") return {label: "Annulée", variant: "danger" as const};
-  if (session.statut === "TERMINEE") return {label: "Terminée", variant: "neutral" as const};
-  const now = Date.now();
-  if (new Date(session.dateDebut).getTime() <= now && new Date(session.dateFin).getTime() >= now) {
-    return {label: "En direct", variant: "live" as const};
-  }
-  return {label: "Planifiée", variant: "warning" as const};
-}
 
 export default function Page() {
   const [items, setItems] = useState<Classe[]>([]);
@@ -41,7 +32,9 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Session | null>(null);
+  const [joinTarget, setJoinTarget] = useState<Session | null>(null);
   const [busy, setBusy] = useState("");
+  const now = useSessionClock();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,6 +165,7 @@ export default function Page() {
     setBusy(`join-${id}`);
     try {
       const response = await api<{joinUrl: string}>(`/formateur/seances/${id}/join`);
+      setJoinTarget(null);
       location.assign(response.joinUrl);
     } catch (reason) {
       setError((reason as Error).message);
@@ -223,7 +217,7 @@ export default function Page() {
                 <header className="class-card-header">
                   <div>
                     <Badge variant="primary">{classe.statut}</Badge>
-                    <h2 style={{marginTop: 12}}>{classe.nom}</h2>
+                    <h2 className="class-title">{classe.nom}</h2>
                     <p>{classe.formation}</p>
                   </div>
                   <span className="stat-icon"><UsersRound size={21} /></span>
@@ -241,12 +235,12 @@ export default function Page() {
                   </form>
                 </details>
 
-                <div className="form-section" style={{marginTop: 18}}>
+                <div className="form-section form-section-spaced">
                   <div className="row spread"><strong>Participants ({classe.membres.length}/{classe.capacite})</strong></div>
                   {classe.membres.length ? (
                     <div className="learning-list">
                       {classe.membres.map((member) => (
-                        <div className="learning-row" style={{gridTemplateColumns: "1fr auto"}} key={member.id}>
+                        <div className="learning-row compact-row" key={member.id}>
                           <div><strong>{member.nom}</strong><p>{member.email}</p></div>
                           <Badge variant="success">{member.statut}</Badge>
                         </div>
@@ -257,14 +251,14 @@ export default function Page() {
                     Afficher les participants éligibles
                   </Button>
                   {eligible[classe.id]?.map((participant) => (
-                    <div className="learning-row" style={{gridTemplateColumns: "1fr auto"}} key={participant.id}>
+                    <div className="learning-row compact-row" key={participant.id}>
                       <div><strong>{participant.nom}</strong><p>{participant.email}</p></div>
                       <Button size="sm" loading={busy === `assign-${participant.id}`} onClick={() => assign(classe.id, participant.id)}>Affecter</Button>
                     </div>
                   ))}
                 </div>
 
-                <div className="form-section" style={{marginTop: 18}}>
+                <div className="form-section form-section-spaced">
                   <strong>Séances</strong>
                   <form className="stack upload-box" onSubmit={(event) => submitSession(event, classe.id)}>
                     <SessionFields />
@@ -272,12 +266,11 @@ export default function Page() {
                   </form>
                   <div className="session-list">
                     {classe.seances.map((session) => {
-                      const status = sessionStatus(session);
                       return (
                         <article className="session-row" key={session.id}>
                           <div>
-                            <Badge variant={status.variant}>{status.label}</Badge>
-                            <h3 style={{marginTop: 10}}>{session.titre}</h3>
+                            <SessionTiming session={session} now={now} />
+                            <h3 className="session-title">{session.titre}</h3>
                             <span className="session-date"><Clock3 size={15} /> {new Date(session.dateDebut).toLocaleString("fr-FR")}</span>
                             {session.statut === "PLANIFIEE" && (
                               <details className="upload-box">
@@ -291,7 +284,7 @@ export default function Page() {
                           </div>
                           {session.statut === "PLANIFIEE" && (
                             <div className="row compact">
-                              <Button size="sm" loading={busy === `join-${session.id}`} onClick={() => join(session.id)}><ExternalLink size={15} /> Ouvrir Jitsi</Button>
+                              <Button size="sm" disabled={!isSessionJoinable(session, now)} onClick={() => setJoinTarget(session)}><ExternalLink size={15} /> {isSessionJoinable(session, now) ? "Préparer la séance" : "Disponible en direct"}</Button>
                               <Button variant="danger" size="sm" onClick={() => setCancelTarget(session)}>Annuler</Button>
                             </div>
                           )}
@@ -313,6 +306,29 @@ export default function Page() {
               <Button type="submit" loading={busy === "new-class"}>Créer la classe</Button>
             </div>
           </form>
+        </Modal>
+        <Modal
+          open={Boolean(joinTarget)}
+          title="Salle d’attente NexaLearn"
+          description="Contrôlez la séance avant d’ouvrir votre salle Jitsi formateur."
+          onClose={() => setJoinTarget(null)}
+        >
+          {joinTarget && (
+            <div className="waiting-room stack">
+              <div className="waiting-room-session">
+                <span className="resource-kicker"><Video aria-hidden="true" size={17} /> Animation en direct</span>
+                <h3>{joinTarget.titre}</h3>
+                <p><Clock3 aria-hidden="true" size={16} /> {new Date(joinTarget.dateDebut).toLocaleString("fr-FR")}</p>
+              </div>
+              <p className="muted">Jitsi s’ouvrira dans cet onglet avec vos droits de modération. Le choix du micro et de la caméra reste géré par son écran de préconnexion.</p>
+              <div className="modal-actions">
+                <Button variant="secondary" onClick={() => setJoinTarget(null)} disabled={busy === `join-${joinTarget.id}`}>Retour</Button>
+                <Button loading={busy === `join-${joinTarget.id}`} onClick={() => join(joinTarget.id)}>
+                  <ExternalLink size={17} /> Ouvrir Jitsi
+                </Button>
+              </div>
+            </div>
+          )}
         </Modal>
         <ConfirmDialog
           open={Boolean(cancelTarget)}
@@ -351,7 +367,13 @@ function ClassFields({formations, value}: {formations: FormationSummary[]; value
 }
 
 function SessionFields({value}: {value?: Session}) {
-  const local = (date?: string) => date ? new Date(date).toISOString().slice(0, 16) : undefined;
+  const local = (date?: string) => {
+    if (!date) return undefined;
+    const instant = new Date(date);
+    if (Number.isNaN(instant.getTime())) return undefined;
+    const offset = instant.getTimezoneOffset() * 60_000;
+    return new Date(instant.getTime() - offset).toISOString().slice(0, 16);
+  };
   return (
     <div className="form-grid">
       <label>Titre<input name="titre" required maxLength={180} defaultValue={value?.titre} /></label>

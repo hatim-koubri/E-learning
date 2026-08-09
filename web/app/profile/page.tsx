@@ -71,6 +71,7 @@ export default function ProfilePage() {
 
   const role = user?.role ?? sessionUser?.role ?? "PARTICIPANT";
   const stage = dashboard ? Math.min(4, Math.floor(dashboard.progressionGlobale / 25)) : 0;
+  const nextFormation = dashboard?.formations[0];
 
   return (
     <Protected>
@@ -79,6 +80,19 @@ export default function ProfilePage() {
           <div className="stack" role="status"><Skeleton className="skeleton-line medium" /><Skeleton className="skeleton-cover" /></div>
         ) : error && !user ? (
           <ErrorState message={error} onRetry={load} />
+        ) : user?.role === "PARTICIPANT" && error && !dashboard ? (
+          <>
+            <PageHeader
+              eyebrow="Aujourd’hui"
+              title={`Bonjour, ${user.nom}`}
+              description="Votre tableau de bord n’a pas pu être chargé."
+            />
+            <ErrorState
+              title="Tableau de bord momentanément indisponible"
+              message={error}
+              onRetry={load}
+            />
+          </>
         ) : user?.role === "PARTICIPANT" && dashboard ? (
           <>
             <PageHeader
@@ -92,7 +106,7 @@ export default function ProfilePage() {
                 </>
               }
             />
-            {error && <div style={{marginBottom: 18}}><ErrorState message={error} onRetry={load} /></div>}
+            {error && <div className="profile-inline-error"><ErrorState message={error} onRetry={load} /></div>}
             <Card className="today-card">
               <div className="today-copy">
                 <span className="eyebrow">Votre prochaine étape</span>
@@ -104,10 +118,18 @@ export default function ProfilePage() {
                       Reprendre là où j’en étais <ArrowRight size={17} />
                     </Link>
                   </>
+                ) : nextFormation ? (
+                  <>
+                    <h2>Commencer {nextFormation.titre}</h2>
+                    <p>Votre parcours est prêt. Ouvrez la première ressource disponible pour enregistrer votre point de reprise.</p>
+                    <Link className="btn btn-primary" href={`/apprentissage/${nextFormation.formationId}`}>
+                      Ouvrir le parcours <ArrowRight size={17} />
+                    </Link>
+                  </>
                 ) : (
                   <>
                     <h2>Choisissez votre première étape</h2>
-                    <p>Une formation inscrite apparaîtra ici dès votre première consultation.</p>
+                    <p>Explorez le catalogue et inscrivez-vous à un parcours publié pour commencer.</p>
                     <Link className="btn btn-primary" href="/catalogue">Explorer le catalogue</Link>
                   </>
                 )}

@@ -26,8 +26,8 @@ describe("client API et authentification",()=>{
  it("gère 204 et les erreurs API ou non JSON",async()=>{
   vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(new Response(null,{status:204}));
   await expect(api("/vide")).resolves.toBeUndefined();
-  vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(new Response(JSON.stringify({message:"Accès refusé"}),{status:403}));
-  await expect(api("/interdit")).rejects.toThrow("Accès refusé");
+  vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(new Response(JSON.stringify({message:"Accès refusé",code:"FORBIDDEN"}),{status:403}));
+  await expect(api("/interdit")).rejects.toMatchObject({message:"Accès refusé",status:403,code:"FORBIDDEN"});
   vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(new Response("oops",{status:500}));
   await expect(api("/erreur")).rejects.toThrow("Une erreur est survenue.");
  });

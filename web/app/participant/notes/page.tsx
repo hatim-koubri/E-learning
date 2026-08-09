@@ -15,6 +15,7 @@ export default function NotesPage() {
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -29,6 +30,12 @@ export default function NotesPage() {
   useEffect(() => { queueMicrotask(load); }, []);
 
   async function save(note: PrivateNote) {
+    const previous = notes;
+    const optimistic = {...note, contenu: draft, updatedAt: new Date().toISOString()};
+    setBusy(note.id);
+    setNotes((current) => current.map((item) => item.id === note.id ? optimistic : item));
+    setEditing(null);
+    setMessage("Enregistrement de la note…");
     try {
       const updated = await api<PrivateNote>(`/participant/notes/${note.id}`, {
         method: "PUT",
@@ -40,16 +47,31 @@ export default function NotesPage() {
         }),
       });
       setNotes((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setEditing(null);
       setMessage("Note mise à jour.");
-    } catch (reason) { setError((reason as Error).message); }
+    } catch (reason) {
+      setNotes(previous);
+      setEditing(note.id);
+      setError((reason as Error).message);
+      setMessage("");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function remove(id: number) {
+    const previous = notes;
+    setBusy(id);
+    setNotes((current) => current.filter((item) => item.id !== id));
+    setMessage("Note supprimée.");
     try {
       await api(`/participant/notes/${id}`, {method: "DELETE"});
-      setNotes((current) => current.filter((item) => item.id !== id));
-    } catch (reason) { setError((reason as Error).message); }
+    } catch (reason) {
+      setNotes(previous);
+      setError((reason as Error).message);
+      setMessage("");
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -77,12 +99,17 @@ export default function NotesPage() {
                 <small>Modifiée le {new Date(note.updatedAt).toLocaleString("fr-FR")}</small>
                 <div className="form-actions">
                   {editing === note.id ? (
-                    <Button onClick={() => save(note)}><Save size={16} /> Enregistrer</Button>
+                    <Button loading={busy === note.id} onClick={() => save(note)}><Save size={16} /> Enregistrer</Button>
                   ) : (
                     <Button variant="secondary" onClick={() => {setEditing(note.id); setDraft(note.contenu || "");}}><Edit3 size={16} /> Modifier</Button>
                   )}
-                  <Button variant="danger" onClick={() => remove(note.id)}><Trash2 size={16} /> Supprimer</Button>
-                  <Link className="btn btn-ghost" href={`/catalogue/${note.formationId}`}>Ouvrir le cours</Link>
+                  <Button variant="danger" disabled={busy === note.id} onClick={() => remove(note.id)}><Trash2 size={16} /> Supprimer</Button>
+                  <Link
+                    className="btn btn-ghost"
+                    href={`/apprentissage/${note.formationId}${note.ressourceId ? `?ressource=${note.ressourceId}` : note.chapitreId ? `?chapitre=${note.chapitreId}` : ""}`}
+                  >
+                    Ouvrir le cours
+                  </Link>
                 </div>
               </Card>
             ))}

@@ -1,29 +1,22 @@
 "use client";
 
-import {CalendarDays, Clock3, ExternalLink, UsersRound} from "lucide-react";
+import {CalendarDays, Clock3, ExternalLink, UsersRound, Video} from "lucide-react";
 import {useEffect, useState} from "react";
 import {AppShell} from "@/components/AppShell";
 import {PageHeader} from "@/components/PageHeader";
 import Protected from "@/components/Protected";
-import {Badge, Button, Card, EmptyState, ErrorState, Skeleton} from "@/components/ui";
+import {isSessionJoinable, SessionTiming, useSessionClock} from "@/components/SessionTiming";
+import {Badge, Button, Card, EmptyState, ErrorState, Modal, Skeleton} from "@/components/ui";
 import {api} from "@/lib/api";
 import type {Classe, Session} from "@/lib/classes";
-
-function visualStatus(session: Session) {
-  if (session.statut === "ANNULEE") return {label: "Annulée", variant: "danger" as const};
-  if (session.statut === "TERMINEE") return {label: "Terminée", variant: "neutral" as const};
-  const now = Date.now();
-  if (new Date(session.dateDebut).getTime() <= now && new Date(session.dateFin).getTime() >= now) {
-    return {label: "En direct", variant: "live" as const};
-  }
-  return {label: "Planifiée", variant: "warning" as const};
-}
 
 export default function Page() {
   const [items, setItems] = useState<Classe[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState<number | null>(null);
+  const [joinTarget, setJoinTarget] = useState<Session | null>(null);
+  const now = useSessionClock();
 
   useEffect(() => {
     api<Classe[]>("/participant/classes")
@@ -37,6 +30,7 @@ export default function Page() {
     setError("");
     try {
       const response = await api<{joinUrl: string}>(`/participant/seances/${sessionId}/join`);
+      setJoinTarget(null);
       window.location.assign(response.joinUrl);
     } catch (reason) {
       setError((reason as Error).message);
@@ -68,7 +62,7 @@ export default function Page() {
                 <header className="class-card-header">
                   <div>
                     <Badge variant="primary">{classe.statut}</Badge>
-                    <h2 style={{marginTop: 12}}>{classe.nom}</h2>
+                    <h2 className="class-title">{classe.nom}</h2>
                     <p>{classe.formation}</p>
                   </div>
                   <span className="stat-icon"><UsersRound size={21} /></span>
@@ -79,22 +73,21 @@ export default function Page() {
                 <div className="session-list">
                   {classe.seances.length === 0 && <p>Aucune séance n’est encore planifiée.</p>}
                   {classe.seances.map((session) => {
-                    const status = visualStatus(session);
                     return (
                       <article className="session-row" key={session.id}>
                         <div>
-                          <Badge variant={status.variant}>{status.label}</Badge>
-                          <h3 style={{marginTop: 10}}>{session.titre}</h3>
+                          <SessionTiming session={session} now={now} />
+                          <h3 className="session-title">{session.titre}</h3>
                           <span className="session-date">
                             <Clock3 size={15} /> {new Date(session.dateDebut).toLocaleString("fr-FR")}
                           </span>
                         </div>
                         <Button
-                          disabled={session.statut !== "PLANIFIEE"}
+                          disabled={!isSessionJoinable(session, now)}
                           loading={joining === session.id}
-                          onClick={() => join(session.id)}
+                          onClick={() => setJoinTarget(session)}
                         >
-                          <ExternalLink size={17} /> Rejoindre Jitsi
+                          <ExternalLink size={17} /> {isSessionJoinable(session, now) ? "Rejoindre Jitsi" : "Disponible en direct"}
                         </Button>
                       </article>
                     );
@@ -104,6 +97,29 @@ export default function Page() {
             ))}
           </div>
         )}
+        <Modal
+          open={Boolean(joinTarget)}
+          title="Salle d’attente NexaLearn"
+          description="Vérifiez la séance avant d’ouvrir la visioconférence sécurisée."
+          onClose={() => setJoinTarget(null)}
+        >
+          {joinTarget && (
+            <div className="waiting-room stack">
+              <div className="waiting-room-session">
+                <span className="resource-kicker"><Video aria-hidden="true" size={17} /> Classe en direct</span>
+                <h3>{joinTarget.titre}</h3>
+                <p><Clock3 aria-hidden="true" size={16} /> {new Date(joinTarget.dateDebut).toLocaleString("fr-FR")}</p>
+              </div>
+              <p className="muted">Jitsi s’ouvrira dans cet onglet. Vous pourrez choisir votre micro et votre caméra dans son écran de préconnexion.</p>
+              <div className="modal-actions">
+                <Button variant="secondary" onClick={() => setJoinTarget(null)} disabled={joining !== null}>Retour</Button>
+                <Button loading={joining === joinTarget.id} onClick={() => join(joinTarget.id)}>
+                  <ExternalLink size={17} /> Ouvrir Jitsi
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </AppShell>
     </Protected>
   );

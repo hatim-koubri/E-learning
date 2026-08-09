@@ -116,7 +116,7 @@ export default function Page() {
                 <tbody>
                   {items.map((formateur) => (
                     <tr key={formateur.id}>
-                      <td><strong>{formateur.nom}</strong><br /><span className="muted">Demande du {new Date(formateur.createdAt).toLocaleDateString("fr-FR")}</span></td>
+                      <td><strong>{formateur.nom}</strong><br /><span className="muted">{formateur.createdAt ? `Demande du ${new Date(formateur.createdAt).toLocaleDateString("fr-FR")}` : "Date de demande non disponible"}</span></td>
                       <td>{formateur.email}<br /><span className="muted">{formateur.telephone || "Téléphone non renseigné"}</span></td>
                       <td><Badge variant="warning">{formateur.statut}</Badge></td>
                       <td>
@@ -142,9 +142,9 @@ export default function Page() {
         <Modal open={Boolean(selected)} title="Détail du formateur" description="Informations déclarées lors de l’inscription." onClose={() => setSelected(null)}>
           {selected && (
             <div className="stack">
-              <div><span className="field-hint">Nom</span><strong style={{display: "block"}}>{selected.nom}</strong></div>
-              <div><span className="field-hint">Email</span><strong style={{display: "block"}}>{selected.email}</strong></div>
-              <div><span className="field-hint">Téléphone</span><strong style={{display: "block"}}>{selected.telephone || "Non renseigné"}</strong></div>
+              <div><span className="field-hint">Nom</span><strong className="field-value">{selected.nom}</strong></div>
+              <div><span className="field-hint">Email</span><strong className="field-value">{selected.email}</strong></div>
+              <div><span className="field-hint">Téléphone</span><strong className="field-value">{selected.telephone || "Non renseigné"}</strong></div>
               <div><span className="field-hint">Statut</span><Badge variant="warning">{selected.statut}</Badge></div>
               <div className="form-actions"><Button variant="secondary" onClick={() => setSelected(null)}>Fermer</Button></div>
             </div>

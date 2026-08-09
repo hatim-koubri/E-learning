@@ -1,6 +1,11 @@
 export type User={id:number;nom:string;email:string;telephone?:string;role:"ADMIN"|"FORMATEUR"|"PARTICIPANT";statut:string;createdAt:string};
 export type Formateur={id:number;nom:string;email:string;telephone?:string;statut:string;motifRefus?:string;dateDecision?:string;createdAt:string};
-type ApiError={message?:string;errors?:Record<string,string>};
+type ApiError={message?:string;code?:string;errors?:Record<string,string>};
+export class ApiRequestError extends Error{
+  constructor(message:string,public readonly status:number,public readonly code?:string){
+    super(message);this.name="ApiRequestError";
+  }
+}
 const BASE=process.env.NEXT_PUBLIC_API_URL??"http://localhost:8080/api";
 export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   const token=typeof window!=="undefined"?localStorage.getItem("access_token"):null;
@@ -15,7 +20,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
       window.location.href="/login?expired=1";
       throw new Error("Votre session a expiré. Reconnectez-vous.");
     }
-    throw new Error(e.message??"Une erreur est survenue.");
+    throw new ApiRequestError(e.message??"Une erreur est survenue.",response.status,e.code);
   }
   return response.status===204?undefined as T:response.json();
 }

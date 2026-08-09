@@ -1,4 +1,4 @@
-import type {Niveau} from "./formations";
+import type {Niveau, ResourceType} from "./formations";
 
 export type PreferenceFormat = "VIDEO" | "LECTURE" | "PRATIQUE" | "CLASSE_VIRTUELLE";
 export type Preferences = {
@@ -153,7 +153,7 @@ export type LearningJourney = {
       titre: string;
       etat: string;
       progression: number;
-      ressources: {id: number; titre: string; type: string; etat: string}[];
+      ressources: {id: number; titre: string; type: ResourceType; etat: string}[];
     }[];
   }[];
 };
