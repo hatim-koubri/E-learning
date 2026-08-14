@@ -49,6 +49,7 @@ export function CourseCard({course}: {course: CatalogueItem}) {
       <Link className="course-media" href={`/catalogue/${course.id}`} aria-label={`Voir ${course.titre}`}>
         {course.imageUrl ? (
           <Image
+            unoptimized
             width={560}
             height={315}
             sizes="(max-width: 700px) calc(100vw - 28px), (max-width: 1100px) calc(50vw - 30px), 380px"

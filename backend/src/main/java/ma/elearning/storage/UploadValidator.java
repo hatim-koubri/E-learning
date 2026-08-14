@@ -61,6 +61,11 @@ public class UploadValidator {
         return new ValidatedFile(original, extension, contentType, file.getSize());
     }
 
+    public ValidatedFile validateCredential(MultipartFile file) {
+        String contentType=file==null||file.getContentType()==null?"":file.getContentType().toLowerCase(Locale.ROOT);
+        return validate(file,contentType.startsWith("image/")?ResourceType.IMAGE:ResourceType.PDF);
+    }
+
     private String safeName(String supplied) {
         if (supplied == null || supplied.isBlank()) throw invalid("Le nom du fichier est invalide.");
         String normalized = supplied.replace('\\', '/');

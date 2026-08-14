@@ -1,8 +1,13 @@
 package ma.elearning.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import ma.elearning.common.ApiExceptionHandler.ApiError;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -12,6 +17,9 @@ import org.springframework.security.web.*;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.*;
 import java.util.List;
+import java.util.Map;
+import java.time.Instant;
+import java.io.IOException;
 
 @Configuration @EnableMethodSecurity
 public class SecurityConfig {
@@ -26,14 +34,18 @@ public class SecurityConfig {
         return source;
     }
     @Bean SecurityFilterChain chain(HttpSecurity http, JwtAuthenticationFilter jwt,
-                                    CorsConfigurationSource corsConfigurationSource) throws Exception {
+                                    CorsConfigurationSource corsConfigurationSource,
+                                    ObjectMapper json) throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e
-                        .authenticationEntryPoint((req,res,ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
-                        .accessDeniedHandler((req,res,ex) -> res.setStatus(HttpStatus.FORBIDDEN.value())))
+                        .authenticationEntryPoint((req,res,ex) -> writeError(json,req,res,
+                                HttpStatus.UNAUTHORIZED,"UNAUTHORIZED","Authentification requise ou session expirée."))
+                        .accessDeniedHandler((req,res,ex) -> writeError(json,req,res,
+                                HttpStatus.FORBIDDEN,"FORBIDDEN","Vous n’avez pas l’autorisation d’accéder à cette ressource.")))
                 .authorizeHttpRequests(a -> a
+                        .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/auth/register/**","/api/auth/login",
                                 "/api/auth/forgot-password","/api/auth/reset-password",
                                 "/api/catalogue/**",
@@ -45,5 +57,14 @@ public class SecurityConfig {
                         .requestMatchers("/api/participant/**").hasRole("PARTICIPANT")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
+    }
+    private static void writeError(ObjectMapper json, HttpServletRequest request,
+                                   HttpServletResponse response, HttpStatus status,
+                                   String code, String message) throws IOException {
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        json.writeValue(response.getOutputStream(),new ApiError(Instant.now(),status.value(),code,
+                message,request.getRequestURI(),Map.of()));
     }
 }

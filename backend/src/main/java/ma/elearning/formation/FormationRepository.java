@@ -6,6 +6,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface FormationRepository extends JpaRepository<Formation, Long> {
+    long countByFormateurId(Long formateurId);
+    long countByStatut(FormationStatus statut);
+    interface StatusCount { String getLabel(); long getTotal(); }
+    @Query("select cast(f.statut as string) as label, count(f) as total from Formation f group by f.statut")
+    List<StatusCount> countByStatusGroup();
     List<Formation> findByFormateurEmailOrderByUpdatedAtDesc(String email);
     Optional<Formation> findByIdAndFormateurEmail(Long id, String email);
     @EntityGraph(attributePaths = {"formateur"})

@@ -6,4 +6,5 @@ public interface ClasseMembreRepository extends JpaRepository<ClasseMembre,Long>
  List<ClasseMembre> findByClasseId(Long classeId);
  List<ClasseMembre> findByParticipantEmailAndStatut(String email,String statut);
  long countByClasseIdAndStatut(Long classeId,String statut);
+ long countByParticipantId(Long participantId);
 }

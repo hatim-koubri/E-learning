@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import {
   ButtonHTMLAttributes,
+  CSSProperties,
   HTMLAttributes,
   InputHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
@@ -110,6 +111,60 @@ export function ProgressBar({
       />
     </div>
   );
+}
+
+export function ProgressRing({
+  value,
+  label = "Progression",
+  size = "md",
+}: {
+  value: number;
+  label?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const safeValue = Math.min(100, Math.max(0, Math.round(value)));
+  const style = {"--progress": `${safeValue * 3.6}deg`} as CSSProperties;
+  return (
+    <div
+      className={cn("progress-ring", `progress-ring-${size}`)}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={safeValue}
+      style={style}
+    >
+      <span><strong>{safeValue}%</strong><small>{label}</small></span>
+    </div>
+  );
+}
+
+export function Avatar({name, className}: {name: string; className?: string}) {
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+  return <span className={cn("ui-avatar", className)} aria-label={name} title={name}>{initials}</span>;
+}
+
+export function AvatarGroup({names, limit = 3}: {names: string[]; limit?: number}) {
+  const visible = names.slice(0, limit);
+  const remaining = Math.max(0, names.length - visible.length);
+  return (
+    <div className="avatar-group" aria-label={`${names.length} personnes`}>
+      {visible.map((name, index) => <Avatar name={name} key={`${name}-${index}`} />)}
+      {remaining > 0 && <span className="ui-avatar avatar-more" aria-label={`${remaining} autres personnes`}>+{remaining}</span>}
+    </div>
+  );
+}
+
+export function Accordion({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return <details className="ui-accordion" open={defaultOpen}><summary>{title}</summary><div>{children}</div></details>;
 }
 
 export function Alert({
@@ -217,12 +272,14 @@ export function Modal({
   description,
   children,
   onClose,
+  initialFocusSelector,
 }: {
   open: boolean;
   title: string;
   description?: string;
   children: ReactNode;
   onClose: () => void;
+  initialFocusSelector?: string;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
@@ -239,7 +296,12 @@ export function Modal({
     const panel = panelRef.current;
     const focusableSelector = "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])";
     document.body.style.overflow = "hidden";
-    queueMicrotask(() => (panel?.querySelector<HTMLElement>(focusableSelector) ?? panel)?.focus());
+    queueMicrotask(() => {
+      const initialFocus = initialFocusSelector
+        ? panel?.querySelector<HTMLElement>(initialFocusSelector)
+        : null;
+      (initialFocus ?? panel?.querySelector<HTMLElement>(focusableSelector) ?? panel)?.focus();
+    });
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -269,7 +331,7 @@ export function Modal({
       document.body.style.overflow = previousOverflow;
       previous?.focus();
     };
-  }, [open]);
+  }, [initialFocusSelector, open]);
 
   if (!open) return null;
   return (

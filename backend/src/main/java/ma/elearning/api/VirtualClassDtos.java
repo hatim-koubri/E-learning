@@ -7,10 +7,12 @@ public final class VirtualClassDtos {
  public record SessionRequest(@NotBlank @Size(max=180)String titre,@NotNull Instant dateDebut,@NotNull Instant dateFin,
   @NotBlank @Size(max=60)String fuseauHoraire){}
  public record MemberRequest(@NotNull Long participantId){}
- public record SessionResponse(Long id,String titre,Instant dateDebut,Instant dateFin,String fuseauHoraire,String statut){}
+ public record SessionResponse(Long id,String titre,Instant dateDebut,Instant dateFin,String fuseauHoraire,String statut,boolean hostReady){}
  public record MemberResponse(Long id,String nom,String email,String statut){}
  public record EligibleParticipant(Long id,String nom,String email){}
  public record ClasseResponse(Long id,Long formationId,String formation,String nom,String description,int capacite,
   LocalDate dateDebut,LocalDate dateFin,String statut,List<SessionResponse>seances,List<MemberResponse>membres){}
- public record JoinResponse(Long sessionId,String roomName,String baseUrl,String joinUrl){}
+ public record ParticipantClasseResponse(Long id,Long formationId,String formation,String nom,String description,int capacite,
+  LocalDate dateDebut,LocalDate dateFin,String statut,List<SessionResponse>seances){}
+ public record JoinResponse(Long sessionId,String roomName,String baseUrl,String joinUrl,String displayName,boolean moderator){}
 }

@@ -18,6 +18,12 @@ public abstract class User {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private AccountStatus statut;
     @Column(name = "created_at", insertable = false, updatable = false) private Instant createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false) private Instant updatedAt;
+    @Column(name = "suspension_reason", length = 500) private String suspensionReason;
+    @Column(name = "suspended_at") private Instant suspendedAt;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "suspension_admin_id") private Admin suspensionAdmin;
+    @Column(name = "deleted_at") private Instant deletedAt;
+    @Column(name = "anonymized_at") private Instant anonymizedAt;
+    @Column(name = "lifecycle_version", nullable = false) private long lifecycleVersion;
 
     public Long getId() { return id; }
     public String getNom() { return nom; }
@@ -33,5 +39,17 @@ public abstract class User {
     public AccountStatus getStatut() { return statut; }
     public void setStatut(AccountStatus statut) { this.statut = statut; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public String getSuspensionReason() { return suspensionReason; }
+    public void setSuspensionReason(String suspensionReason) { this.suspensionReason = suspensionReason; }
+    public Instant getSuspendedAt() { return suspendedAt; }
+    public void setSuspendedAt(Instant suspendedAt) { this.suspendedAt = suspendedAt; }
+    public Admin getSuspensionAdmin() { return suspensionAdmin; }
+    public void setSuspensionAdmin(Admin suspensionAdmin) { this.suspensionAdmin = suspensionAdmin; }
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+    public Instant getAnonymizedAt() { return anonymizedAt; }
+    public void setAnonymizedAt(Instant anonymizedAt) { this.anonymizedAt = anonymizedAt; }
+    public long getLifecycleVersion() { return lifecycleVersion; }
+    public void incrementLifecycleVersion() { this.lifecycleVersion++; }
 }
-

@@ -10,11 +10,15 @@ import static ma.elearning.api.AdminDtos.*;
 public class AdminFormateurController {
     private final FormateurAdminService service;
     public AdminFormateurController(FormateurAdminService service) { this.service=service; }
-    @GetMapping("/demandes") List<FormateurResponse> pending() { return service.pending(); }
-    @GetMapping("/demandes/{id}") FormateurResponse get(@PathVariable Long id) { return service.get(id); }
-    @PatchMapping("/{id}/accepter") FormateurResponse accept(@PathVariable Long id) { return service.accept(id); }
+    @GetMapping("/demandes") FormateurPage pending(@RequestParam(defaultValue="0") int page,
+                                                    @RequestParam(defaultValue="20") int size) {
+        return service.pending(page,size);
+    }
+    @GetMapping("/demandes/{id}") FormateurApplicationResponse get(@PathVariable Long id) { return service.application(id); }
+    @PatchMapping("/{id}/accepter") FormateurResponse accept(@PathVariable Long id) {
+        return service.accept(id);
+    }
     @PatchMapping("/{id}/refuser") FormateurResponse refuse(@PathVariable Long id,@Valid @RequestBody RefusalRequest r) {
         return service.refuse(id,r.motif());
     }
 }
-

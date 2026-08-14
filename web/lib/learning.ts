@@ -24,7 +24,9 @@ export type ResourceAccess={
   taille?:number|null;
 };
 export type ProgressResponse={formationId:number;chapitreId:number;termine:boolean;positionVideoSecondes:number;pourcentage:number};
-export type QuizParticipant={id:number;titre:string;scoreMinimal:number;important:boolean;tentativesRestantes:number;prochaineDisponibilite?:string|null;questions:{id:number;libelle:string;ordre:number;points:number;reponses:{id:number;libelle:string;ordre:number}[]}[]};
+export type QuizParticipant={id:number;titre:string;scoreMinimal:number;important:boolean;tentativesRestantes:number;prochaineDisponibilite?:string|null;dernierPourcentage?:number|null;dernierResultat?:boolean|null;derniereSoumission?:string|null;questions:{id:number;libelle:string;ordre:number;points:number;reponses:{id:number;libelle:string;ordre:number}[]}[]};
+export type PlannedQuiz={id:number;titre:string;moduleId?:number|null;moduleTitre?:string|null;chapitreId?:number|null;type:"MODULE"|"FINAL";etat:"VERROUILLE"|"DISPONIBLE"|"REUSSI";reussi:boolean};
+export type EvaluationPlan={quizModules:PlannedQuiz[];quizFinal?:PlannedQuiz|null;evaluationsReussies:number;evaluationsObligatoires:number;certificatDisponible:boolean};
 export type QuizResult={
   tentativeId:number;
   score:number;

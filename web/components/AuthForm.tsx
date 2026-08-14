@@ -74,9 +74,9 @@ export function LoginForm() {
       }
       router.push(
         response.user.role === "ADMIN"
-          ? "/admin/formateurs"
+          ? "/admin"
           : response.user.role === "FORMATEUR"
-            ? "/formateur/formations"
+            ? "/formateur"
             : participantDestination,
       );
     } catch (reason) {
@@ -129,15 +129,23 @@ export function RegisterForm({kind}: {kind: "participant" | "formateur"}) {
       return;
     }
     try {
-      await api(`/auth/register/${kind}`, {
-        method: "POST",
-        body: JSON.stringify({
+      const profile = {
           nom: data.get("nom"),
           email: data.get("email"),
           telephone: data.get("telephone"),
           password,
-        }),
-      });
+          ...(kind === "formateur" ? {specialite:data.get("specialite"),biographie:data.get("biographie")} : {}),
+      };
+      if(kind === "formateur"){
+        const cv=(form.elements.namedItem("cv") as HTMLInputElement).files?.[0];
+        const documents=Array.from((form.elements.namedItem("documents") as HTMLInputElement).files??[]).filter(file=>file.size>0);
+        if(!cv){setError("Ajoutez votre CV.");setBusy(false);return;}
+        const multipart=new FormData();multipart.append("profile",new Blob([JSON.stringify(profile)],{type:"application/json"}));
+        multipart.append("cv",cv!);documents.forEach(file=>multipart.append("documents",file));
+        await api("/auth/register/formateur",{method:"POST",body:multipart});
+      }else{
+        await api("/auth/register/participant",{method:"POST",body:JSON.stringify(profile)});
+      }
       setMessage(
         kind === "formateur"
           ? "Demande envoyée. Un administrateur doit la valider."
@@ -168,6 +176,14 @@ export function RegisterForm({kind}: {kind: "participant" | "formateur"}) {
       <PasswordField
         hint="8 à 72 caractères, avec majuscule, minuscule, chiffre et caractère spécial."
       />
+      {kind === "formateur" && <>
+        <label>Spécialité<input name="specialite" required maxLength={160} placeholder="Ex. Développement web" /></label>
+        <label>Présentation professionnelle<textarea name="biographie" required maxLength={3000} rows={5} placeholder="Présentez votre expérience, vos compétences et les sujets que vous enseignez." /></label>
+        <fieldset className="trainer-documents"><legend>Documents de candidature</legend><p className="field-hint">Votre CV est obligatoire. PDF, JPG ou PNG.</p>
+          <label>Votre CV<input name="cv" type="file" accept="application/pdf,image/jpeg,image/png" /></label>
+          <label>Possédez-vous d’autres documents qui pourraient aider l’administrateur à accepter votre candidature ? <span className="field-hint">Optionnel — diplôme, certificat, attestation ou autre justificatif, 4 fichiers maximum.</span><input name="documents" type="file" accept="application/pdf,image/jpeg,image/png" multiple /></label>
+        </fieldset>
+      </>}
       {message && <Alert variant="success">{message}</Alert>}
       {error && <Alert variant="error">{error}</Alert>}
       <Button loading={busy} type="submit">

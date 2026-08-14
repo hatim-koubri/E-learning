@@ -1,6 +1,6 @@
 "use client";
 
-import {CalendarDays, GraduationCap, Star, UsersRound} from "lucide-react";
+import {GraduationCap, Star, UsersRound} from "lucide-react";
 import Link from "next/link";
 import {useParams} from "next/navigation";
 import {useEffect, useState} from "react";
@@ -29,10 +29,7 @@ export default function InstructorPage() {
                 <span><Star size={18} /><strong>{profile.moyenneAvis || "—"}</strong> moyenne réelle</span>
               </div>
             </section>
-            <div className="dashboard-grid">
-              <Card><h2>À propos</h2><p>{profile.biographie || "Le formateur n’a pas encore publié sa biographie."}</p></Card>
-              <Card><h2>Prochaine classe publique</h2>{profile.prochaineClasse ? <><Badge variant="warning">Planifiée</Badge><h3>{profile.prochaineClasse.titre}</h3><p><CalendarDays size={16} /> {new Date(profile.prochaineClasse.dateDebut).toLocaleString("fr-FR")}</p></> : <p>Aucune classe publique planifiée.</p>}</Card>
-            </div>
+            <Card className="section-space"><h2>À propos</h2><p>{profile.biographie || "Le formateur n’a pas encore publié sa biographie."}</p></Card>
             <section className="section-space">
               <div className="section-heading"><div><span className="eyebrow">Catalogue du formateur</span><h2>Formations publiées</h2></div></div>
               {profile.formations.length ? <div className="course-grid">{profile.formations.map((course) => <Card key={course.id}><Badge>{course.categorie}</Badge><h2>{course.titre}</h2><p><GraduationCap size={16} /> {course.niveau.toLowerCase()}</p><Link className="btn btn-secondary" href={`/catalogue/${course.id}`}>Voir la formation</Link></Card>)}</div> : <EmptyState title="Aucune formation publiée" description="Les formations apparaîtront après publication." />}

@@ -130,11 +130,27 @@ describe("Sprint 6 — placement, mouvement et clavier", () => {
     expect(sidebar).not.toHaveAttribute("inert");
     expect(sidebar).toHaveAttribute("role", "dialog");
     expect(container.querySelector(".shell-main")).toHaveAttribute("inert");
+    await waitFor(() => expect(screen.getByRole("button", {name: "Fermer le menu"})).toHaveFocus());
     await user.keyboard("{Escape}");
     expect(sidebar).toHaveAttribute("inert");
     expect(opener).toHaveFocus();
     unmount();
     Object.defineProperty(window, "matchMedia", {configurable: true, value: originalMatchMedia});
+  });
+
+  it("annonce sémantiquement la section Formateur active", async () => {
+    window.history.pushState({}, "", "/formateur/classes");
+    render(<AppShell role="FORMATEUR"><p>Classes</p></AppShell>);
+    expect(await screen.findByRole("link", {name: "Classes"})).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", {name: "Formations"})).not.toHaveAttribute("aria-current");
+  });
+
+  it("limite la navigation Admin aux fonctions réelles et annonce la section active", async () => {
+    window.history.pushState({}, "", "/admin/avis");
+    render(<AppShell role="ADMIN"><p>Modération</p></AppShell>);
+    expect(await screen.findByRole("link", {name: "Modération des avis"})).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", {name: "Demandes Formateur"})).not.toHaveAttribute("aria-current");
+    expect(screen.queryByRole("link", {name: "Mon profil"})).not.toBeInTheDocument();
   });
 
   it("affiche un direct uniquement à partir des dates réelles et nettoie son minuteur", async () => {
@@ -242,6 +258,12 @@ describe("Sprint 6 — placement, mouvement et clavier", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".course-card:focus-within");
     expect(css).toContain(".knowledge-stage:focus-visible");
+    expect(css).toMatch(/\.btn-sm\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.breadcrumb a\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.public-nav > a\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.editor button\.small[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.site-footer a\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.text-link\s*\{[^}]*min-height:\s*44px/);
     expect(css).not.toContain(".hero-score");
     expect(css).not.toMatch(/\.live-chip\s*\{[^}]*position:\s*absolute/);
     expect(css).not.toMatch(/\.map-module:nth-child\(even\)\s*\{[^}]*translateY/);

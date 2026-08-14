@@ -132,7 +132,7 @@ export default function Catalogue() {
             />
             <Button type="submit"><SlidersHorizontal size={18} /> Rechercher</Button>
             {participant && (
-              <label className="favorite-filter">
+              <label className="favorite-filter checkbox-field">
                 <input type="checkbox" checked={favoritesOnly} onChange={(event) => {setFavoritesOnly(event.target.checked); setPage(0);}} />
                 <Heart size={16} fill={favoritesOnly ? "currentColor" : "none"} /> Mes favoris
               </label>

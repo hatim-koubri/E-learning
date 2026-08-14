@@ -11,3 +11,4 @@ uploads/
 .idea/
 .vscode/
 tmp/
+.codex-backend-run/

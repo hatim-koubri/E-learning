@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Target,
   TrendingUp,
+  Video,
 } from "lucide-react";
 import {useEffect, useState} from "react";
 import {AppShell} from "@/components/AppShell";
@@ -23,6 +24,7 @@ import {PageHeader} from "@/components/PageHeader";
 import {Protected} from "@/components/Protected";
 import {Badge, Button, Card, EmptyState, ErrorState, ProgressBar, Skeleton} from "@/components/ui";
 import {api, currentUser, logout, type User} from "@/lib/api";
+import {openMeeting, type MeetingAccess} from "@/lib/meeting";
 import type {Dashboard, WeeklyGoal} from "@/lib/engagement";
 
 export default function ProfilePage() {
@@ -66,6 +68,15 @@ export default function ProfilePage() {
       setError((reason as Error).message);
     } finally {
       setGoalBusy(false);
+    }
+  }
+
+  async function joinDashboardSession(sessionId: number) {
+    try {
+      const access = await api<MeetingAccess>(`/participant/seances/${sessionId}/join`);
+      openMeeting(access, "/profile");
+    } catch (reason) {
+      setError((reason as Error).message);
     }
   }
 
@@ -208,11 +219,13 @@ export default function ProfilePage() {
                   <div className="panel-heading"><div><h2>Prochaine classe</h2><p>Uniquement les séances auxquelles vous êtes affecté.</p></div><CalendarDays size={22} /></div>
                   {dashboard.prochaineClasse ? (
                     <div className="stack">
-                      <Badge variant="warning">Planifiée</Badge>
+                      <Badge variant={new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() ? "live" : "warning"}>{new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() ? "En direct" : "Planifiée"}</Badge>
                       <strong>{dashboard.prochaineClasse.titre}</strong>
                       <p>{dashboard.prochaineClasse.formation}</p>
                       <span className="session-date"><CalendarDays size={16} /> {new Date(dashboard.prochaineClasse.dateDebut).toLocaleString("fr-FR")}</span>
-                      <Link className="btn btn-primary" href="/participant/classes">Voir mes classes</Link>
+                      {new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() && new Date(dashboard.prochaineClasse.dateFin).getTime() > Date.now() ? (
+                        <Button disabled={!dashboard.prochaineClasse.hostReady} onClick={() => joinDashboardSession(dashboard.prochaineClasse!.id)}><Video size={17}/>{dashboard.prochaineClasse.hostReady ? "Rejoindre la séance" : "En attente du formateur"}</Button>
+                      ) : <Link className="btn btn-primary" href="/participant/classes">Voir mes classes</Link>}
                     </div>
                   ) : <p>Aucune séance à venir ne vous est actuellement affectée.</p>}
                 </Card>

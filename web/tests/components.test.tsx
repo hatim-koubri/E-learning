@@ -14,7 +14,7 @@ describe("composants métier",()=>{
   await user.type(screen.getByLabelText("Titre"),"Architecture");
   await user.type(screen.getByLabelText("Description"),"Cours complet");
   await user.clear(screen.getByLabelText("Catégorie")); await user.type(screen.getByLabelText("Catégorie"),"Java");
-  await user.clear(screen.getByLabelText("Prix (MAD)")); await user.type(screen.getByLabelText("Prix (MAD)"),"149.90");
+  await user.clear(screen.getByLabelText("Prix (DH)")); await user.type(screen.getByLabelText("Prix (DH)"),"149.90");
   const form=screen.getByTestId("form") as HTMLFormElement;
   expect(formationPayload(form)).toMatchObject({titre:"Architecture",description:"Cours complet",langue:"fr",categorie:"Java",prix:149.9,niveau:"DEBUTANT"});
  });

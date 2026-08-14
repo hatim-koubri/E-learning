@@ -21,10 +21,15 @@ public final class QuizDtos {
  public record QuizAdmin(Long id,Long formationId,String titre,int ordre,BigDecimal scoreMinimal,boolean important,boolean publie,List<QuestionAdmin> questions){}
  public record AnswerParticipant(Long id,String libelle,int ordre){}
  public record QuestionParticipant(Long id,String libelle,int ordre,BigDecimal points,List<AnswerParticipant> reponses){}
- public record QuizParticipant(Long id,String titre,BigDecimal scoreMinimal,boolean important,int tentativesRestantes,Instant prochaineDisponibilite,List<QuestionParticipant> questions){}
+ public record QuizParticipant(Long id,String titre,BigDecimal scoreMinimal,boolean important,int tentativesRestantes,Instant prochaineDisponibilite,
+  BigDecimal dernierPourcentage,Boolean dernierResultat,Instant derniereSoumission,List<QuestionParticipant> questions){}
  public record Submission(@NotNull Map<@NotNull Long,@NotEmpty List<@NotNull Long>> reponses){}
  public record QuestionFeedback(Long questionId,boolean correcte,String explication){}
  public record ReviewChapter(Long chapitreId,String titre){}
  public record QuizResult(Long tentativeId,BigDecimal score,BigDecimal scoreMaximal,BigDecimal pourcentage,
   boolean reussi,Instant dateSoumission,List<QuestionFeedback> feedback,List<ReviewChapter> chapitresARevoir){}
+ public record PlannedQuiz(Long id,String titre,Long moduleId,String moduleTitre,Long chapitreId,
+  String type,String etat,boolean reussi){}
+ public record EvaluationPlan(List<PlannedQuiz> quizModules,PlannedQuiz quizFinal,
+  int evaluationsReussies,int evaluationsObligatoires,boolean certificatDisponible){}
 }

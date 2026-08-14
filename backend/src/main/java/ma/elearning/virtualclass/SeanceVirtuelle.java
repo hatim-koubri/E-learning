@@ -8,10 +8,14 @@ public class SeanceVirtuelle {
  @Column(name="date_fin",nullable=false) private Instant dateFin; @Column(name="fuseau_horaire",nullable=false,length=60) private String fuseauHoraire;
  @Column(name="identifiant_salle",nullable=false,unique=true,length=100) private String identifiantSalle;
  @Column(nullable=false,length=20) private String statut="PLANIFIEE";
+ @Column(name="host_started_at") private Instant hostStartedAt;
+ @Column(name="version_metier",nullable=false) private int versionMetier;
  public Long getId(){return id;} public Classe getClasse(){return classe;} public void setClasse(Classe v){classe=v;}
  public String getTitre(){return titre;} public void setTitre(String v){titre=v;} public Instant getDateDebut(){return dateDebut;}
  public void setDateDebut(Instant v){dateDebut=v;} public Instant getDateFin(){return dateFin;} public void setDateFin(Instant v){dateFin=v;}
  public String getFuseauHoraire(){return fuseauHoraire;} public void setFuseauHoraire(String v){fuseauHoraire=v;}
  public String getIdentifiantSalle(){return identifiantSalle;} public void setIdentifiantSalle(String v){identifiantSalle=v;}
  public String getStatut(){return statut;} public void setStatut(String v){statut=v;}
+ public Instant getHostStartedAt(){return hostStartedAt;} public void setHostStartedAt(Instant v){hostStartedAt=v;}
+ public int getVersionMetier(){return versionMetier;} public void setVersionMetier(int v){versionMetier=v;}
 }

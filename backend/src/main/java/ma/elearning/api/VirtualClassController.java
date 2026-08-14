@@ -13,6 +13,6 @@ public class VirtualClassController {
  @PutMapping("/formateur/seances/{id}") SessionResponse updateSession(Authentication a,@PathVariable Long id,@Valid @RequestBody SessionRequest r){return service.updateSession(a.getName(),id,r);}
  @PostMapping("/formateur/seances/{id}/annulation") SessionResponse cancel(Authentication a,@PathVariable Long id){return service.cancel(a.getName(),id);}
  @GetMapping("/formateur/seances/{id}/join") JoinResponse trainerJoin(Authentication a,@PathVariable Long id){return service.join(a.getName(),id,true);}
- @GetMapping("/participant/classes") List<ClasseResponse> mine(Authentication a){return service.mine(a.getName());}
+ @GetMapping("/participant/classes") List<ParticipantClasseResponse> mine(Authentication a){return service.mine(a.getName());}
  @GetMapping("/participant/seances/{id}/join") JoinResponse join(Authentication a,@PathVariable Long id){return service.join(a.getName(),id,false);}
 }

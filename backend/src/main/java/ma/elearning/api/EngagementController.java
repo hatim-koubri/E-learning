@@ -179,17 +179,6 @@ public class EngagementController {
         return service.updateInstructor(authentication.getName(), request);
     }
 
-    @GetMapping("/admin/avis/signalements")
-    List<ReviewReportResponse> reports() {
-        return service.reviewReports();
-    }
-
-    @PutMapping("/admin/avis/{id}/moderation")
-    ReviewResponse moderate(@PathVariable Long id,
-                            @Valid @RequestBody ReviewModerationRequest request) {
-        return service.moderateReview(id, request);
-    }
-
     @GetMapping("/notifications")
     NotificationPage notifications(Authentication authentication,
                                    @RequestParam(defaultValue = "0") int page,
