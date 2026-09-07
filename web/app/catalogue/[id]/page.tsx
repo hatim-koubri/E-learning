@@ -26,6 +26,7 @@ import {useParams, useRouter} from "next/navigation";
 import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
 import {levelLabel} from "@/components/CourseCard";
 import {FavoriteButton} from "@/components/FavoriteButton";
+import {CourseCheckout, PaymentResultModal, type PaymentResult} from "@/components/CourseCheckout";
 import {Footer} from "@/components/Footer";
 import {KnowledgePath} from "@/components/KnowledgePath";
 import {LearningResourceViewer} from "@/components/LearningResourceViewer";
@@ -64,6 +65,8 @@ export default function CourseDetail() {
   const [reportTarget, setReportTarget] = useState<Review | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [selectedOffer, setSelectedOffer] = useState<"content" | "classes">("content");
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -116,24 +119,33 @@ export default function CourseDetail() {
     return true;
   }
 
-  async function enroll(withClasses = false) {
+  async function enroll(withClasses = false, showPaymentResult = false) {
     if (!participantOrLogin()) return;
+    if (showPaymentResult) setPaymentResult(null);
     setBusy(withClasses ? "classes" : "content");
     setError("");
     try {
+      let confirmation = "Votre inscription est confirmée. Le contenu est maintenant accessible.";
       if (withClasses) {
         const response = await api<{montant: number; devise: string}>(`/participant/formations/${id}/inscription-avec-classes`, {
           method: "POST",
           headers: {"Idempotency-Key": crypto.randomUUID()},
         });
-        setNotice(`Inscription confirmée à ${response.montant} ${response.devise}, option classes incluse.`);
+        confirmation = `Inscription confirmée à ${response.montant} ${response.devise}, option classes incluse.`;
       } else {
         await api(`/participant/formations/${id}/inscription`, {method: "POST"});
-        setNotice("Votre inscription est confirmée. Le contenu est maintenant accessible.");
       }
+      if (!showPaymentResult) setNotice(confirmation);
+      setCheckoutOpen(false);
+      if (showPaymentResult) setPaymentResult({status: "success", message: confirmation});
       await load();
     } catch (reason) {
-      setError((reason as Error).message);
+      const message = (reason as Error).message;
+      setError(message);
+      if (showPaymentResult) {
+        setCheckoutOpen(false);
+        setPaymentResult({status: "error", message});
+      }
     } finally {
       setBusy("");
     }
@@ -209,6 +221,17 @@ export default function CourseDetail() {
     } finally {
       setBusy("");
     }
+  }
+
+  function startPurchase() {
+    if (!participantOrLogin()) return;
+    const amount = selectedOffer === "classes" ? course?.prixAvecClasses : course?.prix;
+    if (amount === 0) {
+      void enroll(selectedOffer === "classes");
+      return;
+    }
+    setCheckoutOpen(true);
+    setPaymentResult(null);
   }
 
   function isChapterBookmarked(chapterId: number) {
@@ -358,7 +381,7 @@ export default function CourseDetail() {
             name: course.titre,
             description: course.description,
             inLanguage: course.langue,
-            provider: {"@type": "Organization", name: "NexaLearn"},
+            provider: {"@type": "Organization", name: "Khotwa"},
             offers: [
               {"@type": "Offer", name: "Contenu", price: course.prix, priceCurrency: "MAD"},
               ...(course.classesDisponibles ? [{
@@ -427,13 +450,13 @@ export default function CourseDetail() {
                 </fieldset>
                 <Button
                   loading={busy === (selectedOffer === "classes" ? "classes" : "content")}
-                  onClick={() => enroll(selectedOffer === "classes")}
+                  onClick={startPurchase}
                 >
                   {selectedOffer === "classes" && <UsersRound size={18} />}
-                  {course.prix === 0 && selectedOffer === "content" ? "S’inscrire gratuitement" : "Confirmer l’inscription simulée"}
+                  {(selectedOffer === "classes" ? course.prixAvecClasses : course.prix) === 0 ? "S’inscrire gratuitement" : "Continuer vers le paiement"}
                 </Button>
                 <p className="purchase-note" id="purchase-note">
-                  Paiement simulé pour ce MVP : aucune donnée bancaire n’est demandée. Le montant affiché vient du serveur.
+                  Paiement simulé pour ce MVP : les données du formulaire ne sont jamais transmises. Le montant affiché vient du serveur.
                 </p>
               </div>
             ) : (
@@ -466,6 +489,28 @@ export default function CourseDetail() {
             )}
           </div>
         </section>
+
+        {checkoutOpen && <CourseCheckout
+          open={checkoutOpen}
+          courseTitle={course.titre}
+          trainer={course.formateur}
+          withClasses={selectedOffer === "classes"}
+          amount={selectedOffer === "classes" ? course.prixAvecClasses : course.prix}
+          currency={course.devise}
+          busy={busy === (selectedOffer === "classes" ? "classes" : "content")}
+          onClose={() => setCheckoutOpen(false)}
+          onConfirm={() => enroll(selectedOffer === "classes", true)}
+        />}
+
+        {paymentResult && <PaymentResultModal
+          result={paymentResult}
+          courseTitle={course.titre}
+          amount={selectedOffer === "classes" ? course.prixAvecClasses : course.prix}
+          currency={course.devise}
+          onClose={() => setPaymentResult(null)}
+          onContinue={() => {setPaymentResult(null);router.push(`/apprentissage/${id}`)}}
+          onRetry={() => {setPaymentResult(null);setCheckoutOpen(true)}}
+        />}
 
         <section className="surface-card course-knowledge-path" aria-labelledby="course-path-title">
           <div><span className="eyebrow">Le parcours de connaissance</span><h2 id="course-path-title">De la découverte à la maîtrise</h2><p>Les étapes avancent uniquement avec votre progression réelle.</p></div>

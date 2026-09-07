@@ -22,13 +22,25 @@ public class NotificationDeliveryService {
     @Transactional
     public DeliveryResult deliver(User recipient, NotificationCategory category, String eventKey,
                                   String title, String message, String actionUrl, boolean mandatory) {
+        return deliver(recipient, category, eventKey, title, message, actionUrl, mandatory, mandatory, mandatory);
+    }
+
+    @Transactional
+    public DeliveryResult deliverRequiredInAppOptionalEmail(User recipient, NotificationCategory category,
+                                  String eventKey, String title, String message, String actionUrl) {
+        return deliver(recipient, category, eventKey, title, message, actionUrl, true, false, true);
+    }
+
+    private DeliveryResult deliver(User recipient, NotificationCategory category, String eventKey,
+                                  String title, String message, String actionUrl,
+                                  boolean mandatoryInApp, boolean mandatoryEmail, boolean retryEmail) {
         if (recipient.getStatut() == AccountStatus.SUSPENDU || recipient.getStatut() == AccountStatus.SUPPRIME) {
             return new DeliveryResult(false, false);
         }
         NotificationPreference preference = preferences
                 .findByUserEmailAndCategorie(recipient.getEmail(), category).orElse(null);
-        boolean inApp = mandatory || preference == null || preference.isDansApplication();
-        boolean email = mandatory || preference != null && preference.isEmailActif();
+        boolean inApp = mandatoryInApp || preference == null || preference.isDansApplication();
+        boolean email = mandatoryEmail || preference != null && preference.isEmailActif();
         boolean created = false;
         if (inApp && !alreadyDelivered(recipient, category, eventKey)) {
             UserNotification notification = new UserNotification();
@@ -43,7 +55,7 @@ public class NotificationDeliveryService {
         }
         boolean emailQueued = false;
         if (email) {
-            emailQueued = emailQueue.enqueue(recipient, category, eventKey, title, message, actionUrl, mandatory).created();
+            emailQueued = emailQueue.enqueue(recipient, category, eventKey, title, message, actionUrl, retryEmail).created();
         }
         return new DeliveryResult(created, emailQueued);
     }

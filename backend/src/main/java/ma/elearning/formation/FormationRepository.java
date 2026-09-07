@@ -23,6 +23,9 @@ public interface FormationRepository extends JpaRepository<Formation, Long> {
     Optional<Formation> findOneByIdAndStatut(Long id, FormationStatus statut);
     @EntityGraph(attributePaths = {"formateur"})
     List<Formation> findByStatutOrderByUpdatedAtDesc(FormationStatus statut);
+    @EntityGraph(attributePaths = {"formateur", "modules"})
+    @Query("select distinct f from Formation f where f.statut = ma.elearning.formation.FormationStatus.PUBLIEE order by f.id asc")
+    List<Formation> orientationCandidates();
     @EntityGraph(attributePaths = {"formateur"})
     List<Formation> findByFormateurIdAndStatutOrderByUpdatedAtDesc(Long formateurId, FormationStatus statut);
 }

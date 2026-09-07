@@ -273,6 +273,7 @@ export function Modal({
   children,
   onClose,
   initialFocusSelector,
+  panelClassName,
 }: {
   open: boolean;
   title: string;
@@ -280,6 +281,7 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
   initialFocusSelector?: string;
+  panelClassName?: string;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
@@ -337,7 +339,7 @@ export function Modal({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="modal-panel"
+        className={cn("modal-panel", panelClassName)}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

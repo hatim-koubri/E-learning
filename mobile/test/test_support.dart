@@ -78,6 +78,24 @@ class MemoryOfflineLibrary implements OfflineLibrary {
   Future<List<Map<String, dynamic>>> cachedCourses() async =>
       courses.values.toList();
   @override
+  Future<List<Map<String, dynamic>>> installedCourses() async =>
+      courses.values.where((course) => course['_installed'] == true).toList();
+  @override
+  Future<void> installCourse(
+    int formationId,
+    Map<String, dynamic> course,
+  ) async {
+    courses[formationId] = Map<String, dynamic>.from(course)
+      ..['_installed'] = true;
+  }
+
+  @override
+  Future<void> uninstallCourse(int formationId) async {
+    courses.remove(formationId);
+    resources.removeWhere((_, item) => item.formationId == formationId);
+  }
+
+  @override
   Future<OfflineResource?> resource(int resourceId) async =>
       resources[resourceId];
   @override

@@ -94,3 +94,13 @@ Mailpit est vide et aucune tâche de nettoyage QA n'est active. La base locale c
 # Sécurité différée
 
 - Le jeton JWT reste temporairement stocké dans `localStorage`. Une migration vers un cookie `HttpOnly`, `Secure` et `SameSite` est recommandée, mais doit être conçue comme une évolution transversale couvrant Participant, Formateur, Administrateur et le client Flutter. Elle est volontairement hors du périmètre de la finalisation Admin actuelle.
+
+## Bienvenue Participant et certificat
+
+- L'inscription Participant conserve l'activation immédiate existante. Aucun mécanisme de vérification d'adresse n'existant dans les parcours Web ou mobile, l'email ajouté est informatif et ne contient ni mot de passe, ni JWT, ni token.
+- Après la persistance du Participant, un email transactionnel est inscrit dans `notification_deliveries` sous la catégorie `ACCOUNT_WELCOME` et la clé `participant-welcome:{participantId}`. Le lien est résolu depuis `APP_BASE_URL`. L'envoi intervient après commit ; une panne SMTP produit `RETRY` avec backoff et le scheduler reprend les distributions non envoyées.
+- L'éligibilité au certificat est calculée par `CertificateEligibilityService` pour le plan d'évaluation, le téléchargement et la notification. Elle exige une inscription active/confirmée, un compte actif, tous les chapitres terminés, les quiz de module requis réussis et un quiz final publié réussi.
+- Après une fin de chapitre ou une réussite de quiz, l'inscription est verrouillée, l'éligibilité est recalculée et la transition est matérialisée une seule fois par `certificate-eligible:{inscriptionId}`. La notification `CERTIFICATE_AVAILABLE` est toujours créée dans l'application ; son email est mis en file uniquement si la préférence Participant est active.
+- Le PDF n'est pas généré automatiquement. Le téléchargement continue à recalculer les conditions côté serveur. La page cible réelle est `/apprentissage/{formationId}/quiz` et aucune URL MinIO n'est persistée.
+- Aucune migration n'est ajoutée : les colonnes texte existantes acceptent les nouvelles valeurs enum et les contraintes uniques V6/V8 assurent déjà l'idempotence.
+- Le client Flutter ne propose actuellement ni inscription, ni centre de notifications/préférences ; aucun écran incomplet n'a été ajouté. Ses parcours de session et d'apprentissage restent inchangés.

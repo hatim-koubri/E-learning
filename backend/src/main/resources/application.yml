@@ -1,4 +1,4 @@
-spring:
+   spring:
   application:
     name: elearning-backend
   autoconfigure:
@@ -36,6 +36,15 @@ management:
     health:
       show-details: never
 app:
+  ai:
+    enabled: ${AI_ENABLED:false}
+    base-url: ${AI_BASE_URL:http://localhost:11434}
+    model: ${AI_MODEL:qwen3:4b}
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:60}
+    max-history-messages: ${AI_MAX_HISTORY_MESSAGES:12}
+    hourly-limit: ${AI_HOURLY_LIMIT:20}
+    daily-limit: ${AI_DAILY_LIMIT:100}
+    max-response-characters: ${AI_MAX_RESPONSE_CHARACTERS:12000}
   jwt:
     secret: ${JWT_SECRET}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:15}

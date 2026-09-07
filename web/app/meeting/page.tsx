@@ -68,7 +68,7 @@ export default function MeetingPage() {
   return (
     <main style={{position:"fixed",inset:0,background:"#10111a"}}>
       {message && <p style={{position:"absolute",inset:0,display:"grid",placeItems:"center",color:"white",margin:0}}>{message}</p>}
-      <div ref={container} style={{position:"absolute",inset:0}} aria-label="Réunion NexaLearn" />
+      <div ref={container} style={{position:"absolute",inset:0}} aria-label="Réunion Khotwa" />
     </main>
   );
 }

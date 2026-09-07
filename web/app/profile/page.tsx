@@ -33,6 +33,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [goalBusy, setGoalBusy] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const sessionUser = currentUser();
 
   async function load() {
@@ -43,6 +44,7 @@ export default function ProfilePage() {
       setUser(me);
       if (me.role === "PARTICIPANT") {
         setDashboard(await api<Dashboard>("/participant/tableau-de-bord"));
+        setLoadedAt(Date.now());
       }
     } catch (reason) {
       setError((reason as Error).message);
@@ -219,11 +221,11 @@ export default function ProfilePage() {
                   <div className="panel-heading"><div><h2>Prochaine classe</h2><p>Uniquement les séances auxquelles vous êtes affecté.</p></div><CalendarDays size={22} /></div>
                   {dashboard.prochaineClasse ? (
                     <div className="stack">
-                      <Badge variant={new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() ? "live" : "warning"}>{new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() ? "En direct" : "Planifiée"}</Badge>
+                      <Badge variant={loadedAt !== null && new Date(dashboard.prochaineClasse.dateDebut).getTime() <= loadedAt ? "live" : "warning"}>{loadedAt !== null && new Date(dashboard.prochaineClasse.dateDebut).getTime() <= loadedAt ? "En direct" : "Planifiée"}</Badge>
                       <strong>{dashboard.prochaineClasse.titre}</strong>
                       <p>{dashboard.prochaineClasse.formation}</p>
                       <span className="session-date"><CalendarDays size={16} /> {new Date(dashboard.prochaineClasse.dateDebut).toLocaleString("fr-FR")}</span>
-                      {new Date(dashboard.prochaineClasse.dateDebut).getTime() <= Date.now() && new Date(dashboard.prochaineClasse.dateFin).getTime() > Date.now() ? (
+                      {loadedAt !== null && new Date(dashboard.prochaineClasse.dateDebut).getTime() <= loadedAt && new Date(dashboard.prochaineClasse.dateFin).getTime() > loadedAt ? (
                         <Button disabled={!dashboard.prochaineClasse.hostReady} onClick={() => joinDashboardSession(dashboard.prochaineClasse!.id)}><Video size={17}/>{dashboard.prochaineClasse.hostReady ? "Rejoindre la séance" : "En attente du formateur"}</Button>
                       ) : <Link className="btn btn-primary" href="/participant/classes">Voir mes classes</Link>}
                     </div>

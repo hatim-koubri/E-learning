@@ -64,6 +64,6 @@ public class DevelopmentAdminInitializer implements ApplicationRunner {
             @NotBlank @Email @Size(max=190) String email,
             @NotBlank
             @Size(min=AccountCredentialPolicy.PASSWORD_MIN_LENGTH,max=AccountCredentialPolicy.PASSWORD_MAX_LENGTH)
-            @Pattern(regexp=AccountCredentialPolicy.PASSWORD_PATTERN,message=AccountCredentialPolicy.PASSWORD_MESSAGE)
+            @Pattern(regexp=AccountCredentialPolicy.REQUIRED_PATTERN,message=AccountCredentialPolicy.REQUIREMENTS_MESSAGE)
             String password){}
 }

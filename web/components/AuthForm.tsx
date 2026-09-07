@@ -149,7 +149,7 @@ export function RegisterForm({kind}: {kind: "participant" | "formateur"}) {
       setMessage(
         kind === "formateur"
           ? "Demande envoyée. Un administrateur doit la valider."
-          : "Compte créé. Vous pouvez vous connecter.",
+          : "Votre compte a été créé. Un email de bienvenue vous sera envoyé. Vous pouvez vous connecter.",
       );
       form.reset();
     } catch (reason) {

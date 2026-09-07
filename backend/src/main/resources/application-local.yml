@@ -8,6 +8,8 @@ spring:
     password: elearning-dev
 
 app:
+  ai:
+    enabled: ${AI_ENABLED:true}
   admin:
     enabled: ${DEV_ADMIN_ENABLED:false}
     email: ${DEV_ADMIN_EMAIL:}

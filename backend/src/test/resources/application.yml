@@ -14,6 +14,15 @@ spring:
     host: localhost
     port: 3025
 app:
+  ai:
+    enabled: false
+    base-url: http://localhost:11434
+    model: qwen3:4b
+    timeout-seconds: 2
+    max-history-messages: 12
+    hourly-limit: 20
+    daily-limit: 100
+    max-response-characters: 12000
   jwt:
     secret: test-secret-key-with-at-least-thirty-two-characters
     expiration-minutes: 15

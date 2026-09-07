@@ -26,7 +26,7 @@ export function Footer() {
         </div>
       </div>
       <div className="container footer-bottom">
-        <span>© {new Date().getFullYear()} NexaLearn</span>
+        <span>© {new Date().getFullYear()} Khotwa</span>
         <span>Plateforme E-learning — Projet de stage</span>
       </div>
     </footer>

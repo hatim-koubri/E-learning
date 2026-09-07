@@ -14,6 +14,9 @@ public interface InscriptionRepository extends JpaRepository<Inscription, Long> 
     @Query("select i from Inscription i where lower(i.participant.email)=lower(:email) and i.formation.id=:formationId")
     Optional<Inscription> findLockedByParticipantEmailAndFormationId(@Param("email") String email,
                                                                      @Param("formationId") Long formationId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Inscription i where i.id=:id")
+    Optional<Inscription> findLockedById(@Param("id") Long id);
     boolean existsByParticipantEmailAndFormationIdAndStatutIn(String email, Long formationId, Iterable<InscriptionStatut> statuts);
     List<Inscription> findByFormationIdAndTypeAcces(Long formationId, TypeAcces typeAcces);
     List<Inscription> findByFormationId(Long formationId);

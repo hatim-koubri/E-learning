@@ -51,6 +51,9 @@ abstract interface class OfflineLibrary {
   Future<void> cacheCourse(int formationId, Map<String, dynamic> course);
   Future<Map<String, dynamic>?> course(int formationId);
   Future<List<Map<String, dynamic>>> cachedCourses();
+  Future<List<Map<String, dynamic>>> installedCourses();
+  Future<void> installCourse(int formationId, Map<String, dynamic> course);
+  Future<void> uninstallCourse(int formationId);
   Future<OfflineResource?> resource(int resourceId);
   Future<OfflineResource> download({
     required int formationId,
@@ -106,7 +109,13 @@ class DeviceOfflineLibrary implements OfflineLibrary {
   Future<void> cacheCourse(int formationId, Map<String, dynamic> course) async {
     final index = await _readIndex();
     final courses = Map<String, dynamic>.from(index['courses'] as Map? ?? {});
-    courses['$formationId'] = course;
+    final existing = courses['$formationId'];
+    final cached = Map<String, dynamic>.from(course);
+    if (existing is Map && existing['_installed'] == true) {
+      cached['_installed'] = true;
+      cached['_installedAt'] = existing['_installedAt'];
+    }
+    courses['$formationId'] = cached;
     index['courses'] = courses;
     await _writeIndex(index);
   }
@@ -128,6 +137,51 @@ class DeviceOfflineLibrary implements OfflineLibrary {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> installedCourses() async =>
+      (await cachedCourses())
+          .where((course) => course['_installed'] == true)
+          .toList();
+
+  @override
+  Future<void> installCourse(
+    int formationId,
+    Map<String, dynamic> course,
+  ) async {
+    final installed = Map<String, dynamic>.from(course);
+    installed['_installed'] = true;
+    installed['_installedAt'] = DateTime.now().toUtc().toIso8601String();
+    await cacheCourse(formationId, installed);
+  }
+
+  @override
+  Future<void> uninstallCourse(int formationId) async {
+    final index = await _readIndex();
+    final courses = Map<String, dynamic>.from(index['courses'] as Map? ?? {});
+    final resources = Map<String, dynamic>.from(
+      index['resources'] as Map? ?? {},
+    );
+    final resourceIds = resources.entries
+        .where((entry) {
+          final value = entry.value;
+          return value is Map && value['formationId'] == formationId;
+        })
+        .map((entry) => entry.key)
+        .toList();
+    for (final id in resourceIds) {
+      final value = resources[id];
+      if (value is Map && value['path'] is String) {
+        final file = File(value['path'] as String);
+        if (await file.exists()) await file.delete();
+      }
+      resources.remove(id);
+    }
+    courses.remove('$formationId');
+    index['courses'] = courses;
+    index['resources'] = resources;
+    await _writeIndex(index);
+  }
+
+  @override
   Future<OfflineResource?> resource(int resourceId) async {
     final resources = (await _readIndex())['resources'] as Map?;
     final value = resources?['$resourceId'];
@@ -145,7 +199,16 @@ class DeviceOfflineLibrary implements OfflineLibrary {
     required String type,
     required Uri uri,
   }) async {
-    final response = await _client.get(uri);
+    final localMinio =
+        Platform.isAndroid &&
+        (uri.host == 'localhost' || uri.host == '127.0.0.1');
+    final downloadUri = localMinio ? uri.replace(host: '10.0.2.2') : uri;
+    final headers = localMinio
+        ? <String, String>{
+            'Host': uri.hasPort ? '${uri.host}:${uri.port}' : uri.host,
+          }
+        : const <String, String>{};
+    final response = await _client.get(downloadUri, headers: headers);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const ApiException(
         ApiErrorKind.network,

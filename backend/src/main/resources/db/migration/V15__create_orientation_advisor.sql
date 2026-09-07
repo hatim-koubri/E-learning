@@ -1,0 +1,61 @@
+CREATE TABLE orientation_conversations (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    participant_id BIGINT NULL,
+    session_id VARCHAR(64) NOT NULL,
+    titre VARCHAR(180) NOT NULL DEFAULT 'Nouvelle orientation',
+    statut VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    objectif VARCHAR(500) NULL,
+    niveau VARCHAR(30) NULL,
+    competences VARCHAR(1000) NULL,
+    langue VARCHAR(20) NULL,
+    budget DECIMAL(10,2) NULL,
+    minutes_hebdomadaires INT NULL,
+    format_pedagogique VARCHAR(40) NULL,
+    besoin_classes BOOLEAN NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_orientation_conversation_participant FOREIGN KEY (participant_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT ck_orientation_conversation_statut CHECK (statut IN ('ACTIVE','ARCHIVEE')),
+    CONSTRAINT ck_orientation_budget CHECK (budget IS NULL OR budget >= 0),
+    CONSTRAINT ck_orientation_minutes CHECK (minutes_hebdomadaires IS NULL OR minutes_hebdomadaires BETWEEN 0 AND 10080),
+    INDEX idx_orientation_conversation_participant_updated (participant_id, updated_at),
+    INDEX idx_orientation_conversation_session_updated (session_id, updated_at)
+);
+
+CREATE TABLE orientation_messages (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    conversation_id BIGINT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    contenu TEXT NOT NULL,
+    statut VARCHAR(20) NOT NULL DEFAULT 'COMPLETE',
+    modele VARCHAR(100) NULL,
+    duree_ms BIGINT NULL,
+    request_id VARCHAR(64) NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_orientation_message_conversation FOREIGN KEY (conversation_id) REFERENCES orientation_conversations(id) ON DELETE CASCADE,
+    CONSTRAINT ck_orientation_message_role CHECK (role IN ('USER','ASSISTANT','SYSTEM')),
+    CONSTRAINT ck_orientation_message_statut CHECK (statut IN ('EN_ATTENTE','COMPLETE','ERREUR')),
+    CONSTRAINT uk_orientation_message_request UNIQUE (conversation_id, request_id),
+    INDEX idx_orientation_message_history (conversation_id, created_at, id)
+);
+
+CREATE TABLE orientation_recommendations (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    conversation_id BIGINT NOT NULL,
+    formation_id BIGINT NOT NULL,
+    score INT NOT NULL,
+    rang INT NOT NULL,
+    raisons_json TEXT NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_orientation_recommendation_conversation FOREIGN KEY (conversation_id) REFERENCES orientation_conversations(id) ON DELETE CASCADE,
+    CONSTRAINT fk_orientation_recommendation_formation FOREIGN KEY (formation_id) REFERENCES formations(id) ON DELETE CASCADE,
+    CONSTRAINT ck_orientation_recommendation_score CHECK (score BETWEEN 0 AND 100),
+    CONSTRAINT ck_orientation_recommendation_rank CHECK (rang BETWEEN 1 AND 3),
+    CONSTRAINT uk_orientation_recommendation_formation UNIQUE (conversation_id, formation_id),
+    CONSTRAINT uk_orientation_recommendation_rank UNIQUE (conversation_id, rang),
+    INDEX idx_orientation_recommendation_conversation (conversation_id, rang)
+);

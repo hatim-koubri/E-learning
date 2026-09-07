@@ -362,8 +362,10 @@ class Sprint5IntegrationTest {
         engagement.sendNotification(participant.getEmail(), NotificationCategory.QUIZ,
                 "Ne doit pas être créée", "Préférence désactivée.", "/profile");
         assertEquals(1, engagement.notifications(participant.getEmail(), 0, 20).content().size());
-        assertEquals(4,
+        assertEquals(5,
                 engagement.notificationPreferences(participant.getEmail()).size());
+        assertTrue(engagement.notificationPreferences(participant.getEmail()).stream()
+                .anyMatch(preference -> preference.categorie() == NotificationCategory.CERTIFICATE_AVAILABLE));
         engagement.markAllRead(participant.getEmail());
 
         String participantToken = jwt.generate(participant);

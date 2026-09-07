@@ -3,6 +3,7 @@ package ma.elearning.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Cookie;
 import ma.elearning.common.ApiExceptionHandler.ApiError;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
@@ -15,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.*;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.*;
 import java.util.List;
 import java.util.Map;
@@ -23,12 +25,14 @@ import java.io.IOException;
 
 @Configuration @EnableMethodSecurity
 public class SecurityConfig {
+    private static final RequestMatcher COOKIE_CREDENTIAL_CSRF = request ->
+            isUnsafe(request.getMethod()) && hasCookies(request.getCookies());
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
     @Bean CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origin}") String origin) {
         var c = new CorsConfiguration();
         c.setAllowedOrigins(List.of(origin.isBlank() ? "http://localhost:3000" : origin));
         c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization","Content-Type","Idempotency-Key"));
+        c.setAllowedHeaders(List.of("Authorization","Content-Type","Idempotency-Key","X-Orientation-Session"));
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
         return source;
@@ -36,7 +40,7 @@ public class SecurityConfig {
     @Bean SecurityFilterChain chain(HttpSecurity http, JwtAuthenticationFilter jwt,
                                     CorsConfigurationSource corsConfigurationSource,
                                     ObjectMapper json) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
+        return http.csrf(csrf -> csrf.requireCsrfProtectionMatcher(COOKIE_CREDENTIAL_CSRF))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e
@@ -57,6 +61,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/participant/**").hasRole("PARTICIPANT")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
+    }
+    private static boolean isUnsafe(String method) {
+        return !List.of("GET", "HEAD", "TRACE", "OPTIONS").contains(method);
+    }
+    private static boolean hasCookies(Cookie[] cookies) {
+        return cookies != null && cookies.length > 0;
     }
     private static void writeError(ObjectMapper json, HttpServletRequest request,
                                    HttpServletResponse response, HttpStatus status,

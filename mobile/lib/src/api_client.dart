@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
@@ -121,6 +122,54 @@ class ApiClient {
     } on FormatException {
       throw const ApiException(ApiErrorKind.other, 'Réponse serveur invalide.');
     }
+  }
+
+  Future<Uint8List> download(String path) async {
+    if (!await _network.isOnline) {
+      throw const ApiException(
+        ApiErrorKind.network,
+        'Réseau indisponible. Vérifiez votre connexion.',
+      );
+    }
+    final token = session.token;
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        ApiErrorKind.unauthorized,
+        'Authentification requise.',
+        statusCode: 401,
+      );
+    }
+    final request = http.Request('GET', Uri.parse('$baseUrl$path'))
+      ..headers['Authorization'] = 'Bearer $token';
+    http.StreamedResponse response;
+    try {
+      response = await _http.send(request);
+    } on Exception {
+      throw const ApiException(
+        ApiErrorKind.network,
+        'Impossible de joindre le serveur.',
+      );
+    }
+    final bytes = await response.stream.toBytes();
+    if (response.statusCode == 401) {
+      unawaited(
+        Future<void>.delayed(Duration.zero).then((_) => session.expire()),
+      );
+      throw const ApiException(
+        ApiErrorKind.unauthorized,
+        'Votre session a expiré.',
+        statusCode: 401,
+      );
+    }
+    if (response.statusCode >= 400) {
+      final text = utf8.decode(bytes, allowMalformed: true);
+      throw ApiException(
+        _kind(response.statusCode),
+        _message(text) ?? _fallback(response.statusCode),
+        statusCode: response.statusCode,
+      );
+    }
+    return bytes;
   }
 
   ApiErrorKind _kind(int status) => switch (status) {

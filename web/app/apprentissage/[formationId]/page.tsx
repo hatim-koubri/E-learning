@@ -2,33 +2,25 @@
 
 import Link from "next/link";
 import {
-  Award,
   ArrowLeft,
-  BookOpen,
   Bookmark,
-  Check,
   CheckCircle2,
-  ClipboardCheck,
   ChevronLeft,
   ChevronRight,
   Download,
   ExternalLink,
-  FileImage,
-  FileText,
   Focus,
   ListTree,
-  LockKeyhole,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
-  PlaySquare,
   Save,
-  Video,
   X,
 } from "lucide-react";
 import {useParams} from "next/navigation";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {LearningResourceViewer} from "@/components/LearningResourceViewer";
+import {LearningCourseOutline, LearningResourceIcon} from "@/components/LearningCourseOutline";
 import {Protected} from "@/components/Protected";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import {Alert, Button, EmptyState, ErrorState, IconButton, ProgressBar, Skeleton, Toast, cn} from "@/components/ui";
@@ -65,19 +57,6 @@ function resourceLabel(type: ResourceType) {
   if (type === "VIDEO") return "Vidéo uploadée";
   if (type === "YOUTUBE") return "Lien YouTube";
   return "Image pédagogique";
-}
-
-function ResourceIcon({type}: {type: ResourceType}) {
-  if (type === "PDF") return <FileText aria-hidden="true" size={17} />;
-  if (type === "VIDEO") return <Video aria-hidden="true" size={17} />;
-  if (type === "YOUTUBE") return <PlaySquare aria-hidden="true" size={17} />;
-  return <FileImage aria-hidden="true" size={17} />;
-}
-
-function StatusIcon({state}: {state: string}) {
-  if (state === "TERMINE") return <Check aria-label="Terminé" size={15} />;
-  if (state === "VERROUILLE") return <LockKeyhole aria-label="Verrouillé" size={15} />;
-  return <BookOpen aria-label="Disponible" size={15} />;
 }
 
 export default function LearningReaderPage() {
@@ -199,7 +178,6 @@ export default function LearningReaderPage() {
   }, [narrow, outlineOpen]);
 
   const resources = useMemo(() => journey ? flattenJourney(journey) : [], [journey]);
-  const moduleQuizById = useMemo(() => new Map((evaluations?.quizModules ?? []).map((quiz) => [quiz.moduleId, quiz])), [evaluations]);
   const currentIndex = resources.findIndex((item) => item.resource.id === activeResourceId);
   const selected = currentIndex >= 0 ? resources[currentIndex] : null;
   const previous = currentIndex > 0 ? resources[currentIndex - 1] : null;
@@ -248,7 +226,7 @@ export default function LearningReaderPage() {
     try{
       const blob=await apiBlob(`/participant/formations/${formationId}/certificat`);
       const url=URL.createObjectURL(blob);const anchor=document.createElement("a");
-      anchor.href=url;anchor.download=`certificat-nexalearn-${formationId}.pdf`;anchor.click();URL.revokeObjectURL(url);
+      anchor.href=url;anchor.download=`certificat-khotwa-${formationId}.pdf`;anchor.click();URL.revokeObjectURL(url);
       setNotice("Votre certificat a été téléchargé.");
     }catch(reason){setResourceError((reason as Error).message)}finally{setBusy("")}
   }
@@ -374,59 +352,15 @@ export default function LearningReaderPage() {
               <div><ListTree size={19} /><strong>Plan du cours</strong></div>
               <IconButton label="Replier le plan" onClick={() => setOutlineOpen(false)}><ChevronLeft size={18} /></IconButton>
             </div>
-            <nav>
-              {journey?.modules.map((module, moduleIndex) => (
-                <details className="reader-module" open={module.chapitres.some((chapter) => chapter.ressources.some((resource) => resource.id === activeResourceId)) || moduleIndex === 0 || undefined} key={module.id}>
-                  <summary>
-                    <span>{String(moduleIndex + 1).padStart(2, "0")}</span>
-                    <strong>{module.titre}</strong>
-                    <StatusIcon state={module.etat} />
-                  </summary>
-                  {module.chapitres.length === 0 && <p className="reader-outline-empty">Aucun chapitre disponible</p>}
-                  {module.chapitres.map((chapter) => (
-                    <section className="reader-chapter" key={chapter.id}>
-                      <div className="reader-chapter-title"><StatusIcon state={chapter.etat} /><strong>{chapter.titre}</strong></div>
-                      {chapter.ressources.length === 0 && <p className="reader-outline-empty">Aucune ressource</p>}
-                      {chapter.ressources.map((resource) => (
-                        <button
-                          type="button"
-                          className={cn("reader-resource-link", resource.id === activeResourceId && "active")}
-                          aria-current={resource.id === activeResourceId ? "page" : undefined}
-                          disabled={resource.etat === "VERROUILLE"}
-                          onClick={() => choose({moduleId: module.id, moduleTitle: module.titre, chapterId: chapter.id, chapterTitle: chapter.titre, chapterState: chapter.etat, resource})}
-                          key={resource.id}
-                        >
-                          <ResourceIcon type={resource.type} />
-                          <span>{resource.titre}</span>
-                          <StatusIcon state={resource.etat} />
-                        </button>
-                      ))}
-                    </section>
-                  ))}
-                  {moduleQuizById.has(module.id) && (
-                    <Link
-                      className={cn("reader-resource-link reader-quiz-link", moduleQuizById.get(module.id)?.etat === "VERROUILLE" && "disabled")}
-                      aria-disabled={moduleQuizById.get(module.id)?.etat === "VERROUILLE" || undefined}
-                      tabIndex={moduleQuizById.get(module.id)?.etat === "VERROUILLE" ? -1 : undefined}
-                      href={moduleQuizById.get(module.id)?.etat === "VERROUILLE" ? "#" : `/apprentissage/${formationId}/quiz?quiz=${moduleQuizById.get(module.id)?.id}`}
-                    >
-                      <ClipboardCheck aria-hidden="true" size={17}/><span>Quiz du module</span>
-                      <StatusIcon state={moduleQuizById.get(module.id)?.etat === "REUSSI" ? "TERMINE" : moduleQuizById.get(module.id)?.etat ?? "VERROUILLE"}/>
-                    </Link>
-                  )}
-                </details>
-              ))}
-              {evaluations?.quizFinal && (
-                <section className="reader-final-evaluation">
-                  <strong>Évaluation finale</strong>
-                  <Link className={cn("reader-resource-link reader-quiz-link",evaluations.quizFinal.etat==="VERROUILLE"&&"disabled")} aria-disabled={evaluations.quizFinal.etat==="VERROUILLE"||undefined} tabIndex={evaluations.quizFinal.etat==="VERROUILLE"?-1:undefined} href={evaluations.quizFinal.etat==="VERROUILLE"?"#":`/apprentissage/${formationId}/quiz?quiz=${evaluations.quizFinal.id}`}>
-                    <Award aria-hidden="true" size={17}/><span>Quiz final</span><StatusIcon state={evaluations.quizFinal.etat==="REUSSI"?"TERMINE":evaluations.quizFinal.etat}/>
-                  </Link>
-                  <p>{evaluations.evaluationsReussies}/{evaluations.evaluationsObligatoires} évaluations réussies</p>
-                  {evaluations.certificatDisponible&&<Button size="sm" loading={busy==="certificate"} onClick={downloadCertificate}><Download size={16}/> Télécharger le certificat</Button>}
-                </section>
-              )}
-            </nav>
+            <LearningCourseOutline
+              formationId={formationId}
+              journey={journey}
+              evaluations={evaluations}
+              activeResourceId={activeResourceId}
+              certificateBusy={busy==="certificate"}
+              onDownloadCertificate={downloadCertificate}
+              onSelectResource={(module,chapter,resource)=>choose({moduleId:module.id,moduleTitle:module.titre,chapterId:chapter.id,chapterTitle:chapter.titre,chapterState:chapter.etat,resource})}
+            />
           </aside>
 
           <main className="reader-main" id="contenu-principal" aria-hidden={narrow && outlineOpen || undefined} inert={narrow && outlineOpen}>
@@ -443,7 +377,7 @@ export default function LearningReaderPage() {
               <div className="reader-resource-transition" key={selected.resource.id}>
                 <header className="reader-resource-header">
                   <div>
-                    <span className="resource-kicker"><ResourceIcon type={selected.resource.type} /> {resourceLabel(selected.resource.type)}</span>
+                    <span className="resource-kicker"><LearningResourceIcon type={selected.resource.type} /> {resourceLabel(selected.resource.type)}</span>
                     <h1>{selected.resource.titre}</h1>
                     <p>{selected.moduleTitle} <span aria-hidden="true">•</span> {selected.chapterTitle}</p>
                     {access && (

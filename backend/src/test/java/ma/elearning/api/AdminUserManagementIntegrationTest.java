@@ -56,6 +56,33 @@ class AdminUserManagementIntegrationTest {
                 .andExpect(jsonPath("$.timezone").value("UTC"));
     }
 
+    @Test void adminCanUpdateSuspendReactivateAndPhysicallyDeleteAnUnrelatedParticipant() throws Exception {
+        long version=participant.getLifecycleVersion();
+        mvc.perform(patch("/api/admin/utilisateurs/"+participant.getId()).header("Authorization",auth()).contentType("application/json")
+                .content(json.writeValueAsString(new AdminUserDtos.UpdateUserRequest("Participant corrigé"," 0600000000 ",version))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user.nom").value("Participant corrigé"))
+                .andExpect(jsonPath("$.user.telephone").value("0600000000"));
+        participant=(Participant)users.findById(participant.getId()).orElseThrow();
+
+        mvc.perform(post("/api/admin/utilisateurs/"+participant.getId()+"/suspension").header("Authorization",auth()).contentType("application/json")
+                .content(json.writeValueAsString(new AdminUserDtos.LifecycleRequest("Contrôle temporaire",participant.getLifecycleVersion()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user.statut").value("SUSPENDU"));
+        participant=(Participant)users.findById(participant.getId()).orElseThrow();
+
+        mvc.perform(post("/api/admin/utilisateurs/"+participant.getId()+"/reactivation").header("Authorization",auth()).contentType("application/json")
+                .content(json.writeValueAsString(new AdminUserDtos.LifecycleRequest("Contrôle terminé",participant.getLifecycleVersion()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user.statut").value("ACTIF"));
+        participant=(Participant)users.findById(participant.getId()).orElseThrow();
+
+        mvc.perform(get("/api/admin/utilisateurs/"+participant.getId()+"/suppression-impact").header("Authorization",auth()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("SUPPRESSION_PHYSIQUE"));
+        mvc.perform(delete("/api/admin/utilisateurs/"+participant.getId()).header("Authorization",auth()).contentType("application/json")
+                .content(json.writeValueAsString(new AdminUserDtos.DeletionRequest(participant.getEmail(),"SUPPRESSION_PHYSIQUE",participant.getLifecycleVersion()))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mode").value("SUPPRESSION_PHYSIQUE"))
+                .andExpect(jsonPath("$.allowed").value(true));
+        Assertions.assertFalse(users.existsById(participant.getId()));
+    }
+
     private String auth(){return "Bearer "+jwt.generate(admin);}
     @SuppressWarnings("unchecked") private <T extends User>T save(T user,String email,Role role,AccountStatus status){user.setNom("Compte QA");user.setEmail(email);user.setPasswordHash(encoder.encode("Password1!"));user.setRole(role);user.setStatut(status);return (T)users.saveAndFlush(user);}
 }

@@ -1,4 +1,4 @@
-import {render,screen,waitFor} from "@testing-library/react";
+import {render,screen,waitFor,within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {beforeEach,describe,expect,it,vi} from "vitest";
 import AdminPage from "@/app/admin/formateurs/page";
@@ -92,5 +92,36 @@ describe("espaces applicatifs",()=>{
   await user.type(title,"Fondations incomplètes");await user.click(screen.getByRole("button",{name:"Ajouter"}));
   expect(await screen.findByText("Le module doit être complété")).toBeInTheDocument();
   expect(title).toHaveValue("Fondations incomplètes");
+ });
+ it("modifie, ordonne et enrichit tout le programme pédagogique",async()=>{
+  userMock.mockReturnValue({id:4,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
+  const resource={id:31,titre:"Support PDF",type:"PDF",ordre:0,nomOriginal:"support.pdf",taille:2048,telechargeable:false};
+  const chapter={id:21,titre:"Introduction",description:"Bases",ordre:0,ressources:[resource]};
+  const modules=[
+   {id:8,titre:"Fondations",description:"Module initial",ordre:0,apercuGratuit:false,chapitres:[chapter]},
+   {id:9,titre:"Pratique",description:"Exercices",ordre:1,apercuGratuit:false,chapitres:[{...chapter,id:22,titre:"Atelier",ressources:[{...resource,id:32,titre:"Vidéo",type:"VIDEO"}]}]},
+  ];
+  const detail={id:12,titre:"Cours complet",description:"Desc",langue:"fr",niveau:"DEBUTANT",categorie:"Dev",prix:0,supplementClasses:0,classesGratuites:false,statut:"BROUILLON",createdAt:"",updatedAt:"v1",modules};
+  apiMock.mockImplementation(async(path)=>path==="/formateur/formations/12"?detail:{});
+  const user=userEvent.setup();render(<FormationEditor/>);
+  const first=await screen.findByText("Fondations");
+  const article=first.closest("article")!;
+  await user.click(within(article).getByRole("button",{name:"Aperçu gratuit"}));
+  await user.click(within(article).getByRole("button",{name:"Descendre le module Fondations"}));
+  await user.type(within(article).getByPlaceholderText("Nouveau chapitre"),"Chapitre ajouté");
+  await user.click(within(article).getByRole("button",{name:"Ajouter le chapitre"}));
+  const youtube=within(article).getByText("Ajouter un lien YouTube").closest("form")!;
+  await user.type(within(youtube).getByPlaceholderText("Titre"),"Démonstration");
+  await user.type(within(youtube).getByPlaceholderText(/youtube/),"https://youtube.com/watch?v=demo");
+  await user.click(within(youtube).getByRole("button",{name:"Ajouter le lien"}));
+  await user.click(within(article).getAllByRole("button",{name:"Modifier"})[0]);
+  const dialog=screen.getByRole("dialog");
+  await user.clear(within(dialog).getByLabelText("Titre"));await user.type(within(dialog).getByLabelText("Titre"),"Fondations modernes");
+  await user.click(within(dialog).getByRole("button",{name:"Enregistrer"}));
+  await waitFor(()=>expect(apiMock).toHaveBeenCalledWith("/formateur/modules/8",expect.objectContaining({method:"PUT"})));
+  await user.click(within(article).getAllByRole("button",{name:"Supprimer"})[0]);
+  const confirmation=screen.getByRole("dialog",{name:"Supprimer ce module ?"});
+  await user.click(within(confirmation).getByRole("button",{name:"Supprimer"}));
+  await waitFor(()=>expect(apiMock).toHaveBeenCalledWith("/formateur/modules/8",{method:"DELETE"}));
  });
 });

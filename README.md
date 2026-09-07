@@ -1,5 +1,7 @@
 # Plateforme E-learning
 
+Guide du conseiller pédagogique local : [docs/orientation-ollama.md](docs/orientation-ollama.md).
+
 Plateforme de cours en ligne avec catalogue public, apprentissage progressif, classes virtuelles,
 quiz, personnalisation et outils d’engagement fondés sur des données pédagogiques réelles.
 

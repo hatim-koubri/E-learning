@@ -47,40 +47,20 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     localStorage.setItem("user", JSON.stringify(participant));
   });
 
-  it("termine l’orientation publique et explique une recommandation réelle", async () => {
+  it("mène une orientation publique conversationnelle avec une recommandation réelle", async () => {
     currentMock.mockReturnValue(null);
-    apiMock.mockResolvedValue([{
-      formationId: 7,
-      titre: "Data accessible",
-      categorie: "Data",
-      niveau: "DEBUTANT",
-      prix: 0,
-      score: 65,
-      raisons: ["Dans votre domaine préféré", "Correspond à votre niveau"],
-    }]);
+    const conversation={id:3,sessionId:"visitor-session-123456",titre:"Nouvelle orientation",statut:"ACTIVE",profil:{competences:[]},messages:[],recommandations:[],createdAt:"2026-08-14",updatedAt:"2026-08-14"};
+    apiMock.mockResolvedValueOnce(conversation).mockResolvedValueOnce({message:{id:2,role:"ASSISTANT",contenu:"Voici une formation réelle.",statut:"COMPLETE",createdAt:"2026-08-14"},profil:{objectif:"Découvrir la data",competences:[]},recommandations:[{formationId:7,titre:"Data accessible",categorie:"Data",formateur:"Sara",niveau:"DEBUTANT",langue:"fr",prix:0,score:65,rang:1,classesDisponibles:false,raisons:["Dans votre domaine préféré"],modules:["Fondations"],href:"/catalogue/7"}]});
     const user = userEvent.setup();
     render(<OrientationPage />);
-
-    const objective = screen.getByPlaceholderText(/préparer une reconversion/i);
-    await user.type(objective, "Découvrir les métiers de la donnée");
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "intermediaire"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "Data"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "2 heures"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "Lecture"}));
-    await user.click(screen.getByRole("button", {name: /Voir mes recommandations/}));
-
+    const input=await screen.findByLabelText("Votre message");await user.type(input,"Je veux découvrir les métiers de la donnée");await user.click(screen.getByRole("button",{name:/Envoyer/}));
     expect(await screen.findByText("Data accessible")).toBeInTheDocument();
     expect(screen.getByText("Dans votre domaine préféré")).toBeInTheDocument();
-    expect(apiMock).toHaveBeenCalledWith("/orientation/recommandations", expect.objectContaining({
+    expect(apiMock).toHaveBeenCalledWith("/orientation/conversations/3/messages", expect.objectContaining({
       method: "POST",
-      body: expect.stringContaining("\"domaine\":\"Data\""),
+      body: expect.stringContaining("métiers de la donnée"),
     }));
-    await user.click(screen.getByRole("button", {name: "Modifier mes réponses"}));
-    expect(screen.getByText("Question 5 sur 5")).toBeInTheDocument();
+    expect(screen.getByRole("link",{name:"Voir la formation"})).toHaveAttribute("href","/catalogue/7");
   });
 
   it("enregistre ou ignore l’onboarding sans forcer les rappels", async () => {

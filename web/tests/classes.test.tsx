@@ -10,14 +10,17 @@ describe("classes virtuelles",()=>{
   who.mockReturnValue({id:1,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
   call.mockResolvedValueOnce([classe]).mockResolvedValueOnce([formation]).mockResolvedValueOnce([{id:3,nom:"Pat",email:"p@t"}]);
   const user=userEvent.setup();render(<TrainerClasses/>);expect(await screen.findByText("Groupe A")).toBeInTheDocument();
-  await user.click(screen.getByRole("button",{name:"Afficher les participants éligibles"}));expect(await screen.findByText(/p@t/)).toBeInTheDocument();
+  expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"Voir ou ajouter des participants"}));
+  const participants=screen.getByRole("dialog",{name:"Participants de la classe"});
+  await user.click(within(participants).getByRole("button",{name:"Ajouter"}));expect(await screen.findByText(/p@t/)).toBeInTheDocument();
   call.mockResolvedValueOnce(classe).mockResolvedValueOnce([classe]).mockResolvedValueOnce([formation]).mockResolvedValueOnce([]);
  await user.click(screen.getByRole("button",{name:"Affecter"}));await waitFor(()=>expect(call).toHaveBeenCalledWith("/formateur/classes/8/membres",expect.objectContaining({method:"POST"})));
  });
  it("planifie plusieurs séances avec une heure de début et une durée",async()=>{
   who.mockReturnValue({id:1,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
   call.mockResolvedValueOnce([classe]).mockResolvedValueOnce([formation]).mockResolvedValueOnce({}).mockResolvedValueOnce({}).mockResolvedValueOnce([classe]).mockResolvedValueOnce([formation]);
-  const user=userEvent.setup();render(<TrainerClasses/>);const plan=await screen.findByRole("button",{name:"Planifier"});const form=plan.closest("form")!;const fields=within(form);
+  const user=userEvent.setup();render(<TrainerClasses/>);await user.click(await screen.findByRole("button",{name:"Nouvelle séance"}));const dialog=screen.getByRole("dialog",{name:"Planifier une nouvelle séance"});const plan=within(dialog).getByRole("button",{name:"Planifier la séance"});const form=plan.closest("form")!;const fields=within(form);
   await user.type(fields.getByLabelText("Titre"),"Atelier récurrent");await user.type(fields.getByLabelText("Date de début"),"2026-08-03");await user.type(fields.getByLabelText("Heure de début"),"09:00");await user.selectOptions(fields.getByLabelText("Durée"),"90");await user.click(fields.getByLabelText("Planifier plusieurs séances"));await user.click(fields.getByLabelText("Lun"));await user.click(fields.getByLabelText("Mer"));await user.type(fields.getByLabelText("Jusqu’au"),"2026-08-05");await user.click(plan);
   await waitFor(()=>expect(call.mock.calls.filter(([path])=>path==="/formateur/classes/8/seances")).toHaveLength(2));
   const bodies=call.mock.calls.filter(([path])=>path==="/formateur/classes/8/seances").map(([,options])=>JSON.parse(String(options?.body)));
@@ -33,21 +36,32 @@ describe("classes virtuelles",()=>{
  });
  it("affiche et ouvre une séance du participant",async()=>{
   who.mockReturnValue({id:2,nom:"P",email:"p@t",role:"PARTICIPANT",statut:"ACTIF",createdAt:""});
-  call.mockResolvedValueOnce([classe]).mockResolvedValueOnce({joinUrl:"https://meet.jit.si/room"});
+  const nextDay=new Date();nextDay.setDate(nextDay.getDate()+1);nextDay.setHours(10,0,0,0);
+  const later=new Date(nextDay);later.setDate(later.getDate()+2);
+  const participantClass={...classe,seances:[...classe.seances,{...classe.seances[0],id:10,titre:"Demain",dateDebut:nextDay.toISOString(),dateFin:new Date(nextDay.getTime()+3_600_000).toISOString(),hostReady:false},{...classe.seances[0],id:11,titre:"Plus tard",dateDebut:later.toISOString(),dateFin:new Date(later.getTime()+3_600_000).toISOString(),hostReady:false}]};
+  call.mockResolvedValueOnce([participantClass]).mockResolvedValueOnce({joinUrl:"https://meet.jit.si/room"});
   const user=userEvent.setup();render(<ParticipantClasses/>);
+  expect(await screen.findByText("Direct")).toBeInTheDocument();
+  expect(screen.queryByText("Demain")).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Voir 2 autres séances"})).toBeInTheDocument();
   await user.click(await screen.findByRole("button",{name:"Rejoindre Jitsi"}));
-  expect(screen.getByRole("dialog",{name:"Salle d’attente NexaLearn"})).toBeInTheDocument();
+  expect(screen.getByRole("dialog",{name:"Salle d’attente Khotwa"})).toBeInTheDocument();
   await user.click(screen.getByRole("button",{name:"Ouvrir Jitsi"}));
   await waitFor(()=>expect(call).toHaveBeenCalledWith("/participant/seances/9/join"));
+  await user.click(screen.getByRole("button",{name:"Voir 2 autres séances"}));
+  expect(screen.getByText("Demain")).toBeInTheDocument();
+  expect(screen.getByText("Plus tard")).toBeInTheDocument();
+  expect(screen.getAllByRole("button",{name:"Rejoindre Jitsi"})).toHaveLength(1);
  });
- it("indique que le formateur ouvre la salle en premier avec son identité NexaLearn",async()=>{
+ it("indique que le formateur ouvre la salle en premier avec son identité Khotwa",async()=>{
   who.mockReturnValue({id:1,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});
   call.mockResolvedValueOnce([classe]).mockResolvedValueOnce([formation]);
   const user=userEvent.setup();render(<TrainerClasses/>);
-  await user.click(await screen.findByRole("button",{name:"Préparer la séance"}));
-  expect(screen.getByRole("dialog",{name:"Salle d’attente NexaLearn"})).toBeInTheDocument();
+  await user.click(await screen.findByRole("button",{name:/Voir les séances/}));
+  await user.click(within(screen.getByRole("dialog",{name:"Séances de la classe"})).getByRole("button",{name:"Préparer"}));
+  expect(screen.getByRole("dialog",{name:"Salle d’attente Khotwa"})).toBeInTheDocument();
   expect(screen.getByText(/ouvrirez la salle en premier comme hôte/)).toBeInTheDocument();
-  expect(screen.getByText(/nom de compte NexaLearn sera utilisé automatiquement/)).toBeInTheDocument();
+  expect(screen.getByText(/nom de compte Khotwa sera utilisé automatiquement/)).toBeInTheDocument();
  });
  it("désactive la création sans formation publiée proposant des classes",async()=>{
   who.mockReturnValue({id:1,nom:"F",email:"f@t",role:"FORMATEUR",statut:"ACTIF",createdAt:""});

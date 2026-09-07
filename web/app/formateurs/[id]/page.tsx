@@ -23,7 +23,7 @@ export default function InstructorPage() {
           <>
             <section className="instructor-hero surface-card">
               <span className="profile-avatar">{profile.nom.slice(0, 1).toUpperCase()}</span>
-              <div><span className="eyebrow">Formateur NexaLearn</span><h1>{profile.nom}</h1><p>{profile.specialite || "Spécialité à venir"}</p></div>
+              <div><span className="eyebrow">Formateur Khotwa</span><h1>{profile.nom}</h1><p>{profile.specialite || "Spécialité à venir"}</p></div>
               <div className="instructor-stats">
                 <span><UsersRound size={18} /><strong>{profile.apprenants}</strong> apprenant(s)</span>
                 <span><Star size={18} /><strong>{profile.moyenneAvis || "—"}</strong> moyenne réelle</span>

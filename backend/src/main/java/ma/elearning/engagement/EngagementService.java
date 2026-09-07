@@ -497,7 +497,7 @@ public class EngagementService {
     private List<NotificationCategory> configurableCategories(User currentUser) {
         if (currentUser.getRole() == Role.PARTICIPANT) return List.of(NotificationCategory.CLASSE,
                 NotificationCategory.NOUVEAU_CONTENU, NotificationCategory.QUIZ,
-                NotificationCategory.REPONSE_FORMATEUR);
+                NotificationCategory.REPONSE_FORMATEUR, NotificationCategory.CERTIFICATE_AVAILABLE);
         if (currentUser.getRole() == Role.FORMATEUR) return List.of(
                 NotificationCategory.REPONSE_FORMATEUR, NotificationCategory.COMPTE_FORMATEUR);
         return List.of();

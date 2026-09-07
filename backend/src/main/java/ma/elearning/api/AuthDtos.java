@@ -13,8 +13,8 @@ public final class AuthDtos {
             @Size(max=30) String telephone,
             @NotBlank
             @Size(min=AccountCredentialPolicy.PASSWORD_MIN_LENGTH,max=AccountCredentialPolicy.PASSWORD_MAX_LENGTH)
-            @Pattern(regexp=AccountCredentialPolicy.PASSWORD_PATTERN,
-                    message=AccountCredentialPolicy.PASSWORD_MESSAGE)
+            @Pattern(regexp=AccountCredentialPolicy.REQUIRED_PATTERN,
+                    message=AccountCredentialPolicy.REQUIREMENTS_MESSAGE)
             String password) {}
     public record TrainerRegisterRequest(
             @NotBlank @Size(max=120) String nom,
@@ -23,7 +23,7 @@ public final class AuthDtos {
             @NotBlank @Size(max=160) String specialite,
             @NotBlank @Size(max=3000) String biographie,
             @NotBlank @Size(min=AccountCredentialPolicy.PASSWORD_MIN_LENGTH,max=AccountCredentialPolicy.PASSWORD_MAX_LENGTH)
-            @Pattern(regexp=AccountCredentialPolicy.PASSWORD_PATTERN,message=AccountCredentialPolicy.PASSWORD_MESSAGE)
+            @Pattern(regexp=AccountCredentialPolicy.REQUIRED_PATTERN,message=AccountCredentialPolicy.REQUIREMENTS_MESSAGE)
             String password) {}
     public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {}
     public record ForgotPasswordRequest(@NotBlank @Email String email) {}
@@ -31,8 +31,8 @@ public final class AuthDtos {
             @NotBlank String token,
             @NotBlank
             @Size(min=AccountCredentialPolicy.PASSWORD_MIN_LENGTH,max=AccountCredentialPolicy.PASSWORD_MAX_LENGTH)
-            @Pattern(regexp=AccountCredentialPolicy.PASSWORD_PATTERN,
-                    message=AccountCredentialPolicy.PASSWORD_MESSAGE)
+            @Pattern(regexp=AccountCredentialPolicy.REQUIRED_PATTERN,
+                    message=AccountCredentialPolicy.REQUIREMENTS_MESSAGE)
             String password) {}
     public record UserResponse(Long id, String nom, String email, String telephone,
                                Role role, AccountStatus statut, Instant createdAt) {}

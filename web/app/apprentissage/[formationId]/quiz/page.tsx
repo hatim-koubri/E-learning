@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import {ArrowLeft, ArrowRight, Award, CheckCircle2, ClipboardCheck, Download, RotateCcw, ShieldCheck, XCircle} from "lucide-react";
+import {ArrowLeft, ArrowRight, Award, CheckCircle2, ChevronLeft, ClipboardCheck, Download, ListTree, PanelLeftClose, PanelLeftOpen, RotateCcw, ShieldCheck, XCircle} from "lucide-react";
 import {useParams} from "next/navigation";
-import {useCallback, useEffect, useState} from "react";
-import {AppShell} from "@/components/AppShell";
-import {PageHeader} from "@/components/PageHeader";
+import {useCallback, useEffect, useRef, useState} from "react";
+import {LearningCourseOutline} from "@/components/LearningCourseOutline";
 import {Protected} from "@/components/Protected";
-import {Alert, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, ProgressBar, Skeleton} from "@/components/ui";
+import {ThemeToggle} from "@/components/ThemeToggle";
+import {Alert, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, ProgressBar, Skeleton, cn} from "@/components/ui";
 import {api, apiBlob} from "@/lib/api";
+import type {LearningJourney} from "@/lib/engagement";
 import type {EvaluationPlan, QuizParticipant, QuizResult} from "@/lib/learning";
 
 export function quizAvailabilityMessage(quiz: Pick<QuizParticipant, "tentativesRestantes" | "prochaineDisponibilite">) {
@@ -30,21 +31,26 @@ export default function QuizPage() {
   const [result, setResult] = useState<QuizResult | null>(null);
   const [resultQuizId, setResultQuizId] = useState<number | null>(null);
   const [plan, setPlan] = useState<EvaluationPlan | null>(null);
+  const [journey, setJourney] = useState<LearningJourney | null>(null);
   const [retrying, setRetrying] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
   const [questionByQuiz, setQuestionByQuiz] = useState<Record<number, number>>({});
   const [confirmTarget, setConfirmTarget] = useState<QuizParticipant | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [narrow, setNarrow] = useState(false);
+  const outlineRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [quizzes,evaluations]=await Promise.all([
+      const [quizzes,evaluations,journeyResponse]=await Promise.all([
         api<QuizParticipant[]>(`/participant/formations/${formationId}/quiz`),
         api<EvaluationPlan>(`/participant/formations/${formationId}/evaluations`),
+        api<LearningJourney>(`/participant/formations/${formationId}/parcours`),
       ]);
-      setItems(quizzes);setPlan(evaluations);
+      setItems(quizzes);setPlan(evaluations);setJourney(journeyResponse);
       setError("");
     } catch (reason) {
       setError((reason as Error).message);
@@ -58,6 +64,36 @@ export default function QuizPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 900px)");
+    const syncOutline = () => {setNarrow(media.matches);setOutlineOpen(!media.matches);};
+    queueMicrotask(syncOutline);
+    media.addEventListener("change", syncOutline);
+    return () => media.removeEventListener("change", syncOutline);
+  }, []);
+
+  useEffect(() => {
+    if (!narrow || !outlineOpen) return;
+    const outline = outlineRef.current;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const focusableSelector = "button:not(:disabled), a[href], summary, [tabindex]:not([tabindex='-1'])";
+    document.body.style.overflow = "hidden";
+    queueMicrotask(() => outline?.querySelector<HTMLElement>(focusableSelector)?.focus());
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {event.preventDefault();setOutlineOpen(false);return;}
+      if (event.key !== "Tab" || !outline) return;
+      const focusable = Array.from(outline.querySelectorAll<HTMLElement>(focusableSelector));
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {event.preventDefault();last.focus();}
+      else if (!event.shiftKey && document.activeElement === last) {event.preventDefault();first.focus();}
+    };
+    window.addEventListener("keydown", keyboard);
+    return () => {window.removeEventListener("keydown", keyboard);document.body.style.overflow=previousOverflow;previous?.focus();};
+  }, [narrow,outlineOpen]);
 
   async function submit(quiz: QuizParticipant) {
     setBusy(quiz.id);
@@ -86,24 +122,33 @@ export default function QuizPage() {
   async function downloadCertificate(){
     setError("");
     try{const blob=await apiBlob(`/participant/formations/${formationId}/certificat`);const url=URL.createObjectURL(blob);
-      const anchor=document.createElement("a");anchor.href=url;anchor.download=`certificat-nexalearn-${formationId}.pdf`;anchor.click();URL.revokeObjectURL(url);
+      const anchor=document.createElement("a");anchor.href=url;anchor.download=`certificat-khotwa-${formationId}.pdf`;anchor.click();URL.revokeObjectURL(url);
     }catch(reason){setError((reason as Error).message)}
   }
 
+  const activeQuizId = requestedQuizId > 0 ? requestedQuizId : items[0]?.id ?? null;
+
   return (
     <Protected role="PARTICIPANT">
-      <AppShell role="PARTICIPANT">
-        <PageHeader
-          eyebrow="Évaluations"
-          title="Évaluations en ligne"
-          description="Répondez avec attention : la correction et le score sont calculés uniquement par le serveur."
-          breadcrumb={[
-            {label: "Tableau de bord", href: "/profile"},
-            {label: "Formation", href: `/catalogue/${formationId}`},
-            {label: "QCM"},
-          ]}
-          actions={<Link className="btn btn-secondary" href={`/apprentissage/${formationId}`}><ArrowLeft size={17} /> Retour au cours</Link>}
-        />
+      <div className={cn("learning-reader-page quiz-reader-page", !outlineOpen && "outline-collapsed")}>
+        <header className="reader-topbar" aria-hidden={narrow&&outlineOpen||undefined} inert={narrow&&outlineOpen}>
+          <div className="reader-topbar-start">
+            <IconButton label={outlineOpen?"Masquer le plan du cours":"Afficher le plan du cours"} onClick={()=>setOutlineOpen((current)=>!current)}>{outlineOpen?<PanelLeftClose size={19}/>:<PanelLeftOpen size={19}/>}</IconButton>
+            <Link className="reader-back" href={`/apprentissage/${formationId}`}><ArrowLeft size={17}/><span>Retour au cours</span></Link>
+          </div>
+          <div className="reader-course-progress"><div><span>Cours</span><strong>{journey?.titre??"Chargement…"}</strong></div><ProgressBar value={journey?.progression??0} label="Progression du cours"/></div>
+          <div className="reader-topbar-actions"><ThemeToggle/></div>
+        </header>
+
+        {outlineOpen&&<button className="reader-outline-overlay" aria-hidden="true" tabIndex={-1} onClick={()=>setOutlineOpen(false)}/>}
+        <div className="reader-layout">
+          <aside aria-hidden={narrow&&!outlineOpen||undefined} aria-label={narrow&&outlineOpen?"Menu du plan du cours":"Plan du cours"} aria-modal={narrow&&outlineOpen||undefined} className={cn("reader-outline",outlineOpen&&"open")} inert={narrow&&!outlineOpen} ref={outlineRef} role={narrow&&outlineOpen?"dialog":undefined}>
+            <div className="reader-outline-heading"><div><ListTree size={19}/><strong>Plan du cours</strong></div><IconButton label="Replier le plan" onClick={()=>setOutlineOpen(false)}><ChevronLeft size={18}/></IconButton></div>
+            <LearningCourseOutline formationId={formationId} journey={journey} evaluations={plan} activeQuizId={activeQuizId}/>
+          </aside>
+          <main className="reader-main quiz-reader-main" id="contenu-principal" aria-hidden={narrow&&outlineOpen||undefined} inert={narrow&&outlineOpen}>
+            <div className="quiz-reader-content">
+              <header className="quiz-reader-heading"><span className="resource-kicker"><ClipboardCheck size={17}/> Évaluation</span><h1>{items.find((quiz)=>quiz.id===activeQuizId)?.titre??"Évaluations en ligne"}</h1><p>Répondez avec attention : la correction et le score sont calculés uniquement par le serveur.</p></header>
         <Alert>
           <ShieldCheck size={18} />
           Les quiz ne sont pas disponibles hors ligne. Une tentative envoyée ne peut pas être annulée.
@@ -267,6 +312,9 @@ export default function QuizPage() {
             })}
           </div>
         )}
+            </div>
+          </main>
+        </div>
         <ConfirmDialog
           open={Boolean(confirmTarget)}
           title="Envoyer cette tentative ?"
@@ -276,7 +324,7 @@ export default function QuizPage() {
           onCancel={() => setConfirmTarget(null)}
           onConfirm={() => confirmTarget ? submit(confirmTarget) : undefined}
         />
-      </AppShell>
+      </div>
     </Protected>
   );
 }

@@ -4,6 +4,8 @@ import {
   CalendarDays,
   Clock3,
   ExternalLink,
+  ListVideo,
+  Pencil,
   Plus,
   UserPlus,
   UsersRound,
@@ -32,6 +34,10 @@ export default function Page() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [editingClassId, setEditingClassId] = useState<number | null>(null);
+  const [planningClassId, setPlanningClassId] = useState<number | null>(null);
+  const [sessionsClassId, setSessionsClassId] = useState<number | null>(null);
+  const [participantsClassId, setParticipantsClassId] = useState<number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Session | null>(null);
   const [joinTarget, setJoinTarget] = useState<Session | null>(null);
   const [busy, setBusy] = useState("");
@@ -93,6 +99,7 @@ export default function Page() {
       for(const session of sessionPlan.payloads){await api(`/formateur/classes/${saved.id}/seances`,{method:"POST",body:JSON.stringify(session)});createdSessions+=1}
       setNotice(id ? "Classe modifiée." : "Classe créée.");
       setCreating(false);
+      if(id)setEditingClassId(null);
       if(createdSessions)setNotice(`Classe créée avec ${createdSessions} séance(s) planifiée(s).`);
       await load();
     } catch (reason) {
@@ -124,6 +131,7 @@ export default function Page() {
     try {
       for(const payload of payloads){await api(id ? `/formateur/seances/${id}` : `/formateur/classes/${classId}/seances`, {method:id?"PUT":"POST",body:JSON.stringify(payload)});created+=1}
       form.reset();
+      if(!id)setPlanningClassId(null);
       setNotice(id?"Séance modifiée.":payloads.length>1?`${payloads.length} séances planifiées.`:"Séance planifiée.");
       await load();
     } catch (reason) {
@@ -200,6 +208,10 @@ export default function Page() {
     };
   }, [items]);
   const classFormations=formations.filter((formation)=>formation.statut==="PUBLIEE"&&(formation.classesGratuites||Number(formation.supplementClasses)>0));
+  const editingClass=items.find((item)=>item.id===editingClassId)??null;
+  const planningClass=items.find((item)=>item.id===planningClassId)??null;
+  const sessionsClass=items.find((item)=>item.id===sessionsClassId)??null;
+  const participantsClass=items.find((item)=>item.id===participantsClassId)??null;
 
   return (
     <Protected role="FORMATEUR">
@@ -213,11 +225,12 @@ export default function Page() {
         {error && <Alert variant="error">{error}</Alert>}
         {notice && <Alert variant="success">{notice}</Alert>}
 
-        <div className="stats-grid">
-          <Card className="stat-card"><span className="stat-icon"><UsersRound size={21} /></span><div><small>Classes</small><strong>{items.length}</strong></div></Card>
-          <Card className="stat-card"><span className="stat-icon success"><UserPlus size={21} /></span><div><small>Participants affectés</small><strong>{stats.members}</strong></div></Card>
-          <Card className="stat-card"><span className="stat-icon warning"><CalendarDays size={21} /></span><div><small>Séances planifiées</small><strong>{stats.upcoming}</strong></div></Card>
-          <Card className="stat-card"><span className="stat-icon"><Video size={21} /></span><div><small>Total séances</small><strong>{stats.sessions}</strong></div></Card>
+        <div className="class-overview-bar" aria-label="Résumé des classes">
+          <span><strong>{items.length}</strong> classe{items.length>1?"s":""}</span>
+          <i aria-hidden="true" />
+          <span><strong>{stats.members}</strong> participant{stats.members>1?"s":""}</span>
+          <i aria-hidden="true" />
+          <span><strong>{stats.upcoming}</strong> séance{stats.upcoming>1?"s":""} à venir</span>
         </div>
 
         {loading ? (
@@ -229,90 +242,37 @@ export default function Page() {
             action={<Button disabled={classFormations.length===0} onClick={() => setCreating(true)}><Plus size={17} /> Créer une classe</Button>}
           />
         ) : (
-          <div className="class-grid">
-            {items.map((classe) => (
-              <Card className="class-card" key={classe.id}>
+          <div className="class-grid class-management-grid">
+            {items.map((classe) => {
+              const nextSession=classe.seances
+                .filter((session)=>session.statut==="PLANIFIEE"&&new Date(session.dateFin).getTime()>=(now??0))
+                .sort((a,b)=>new Date(a.dateDebut).getTime()-new Date(b.dateDebut).getTime())[0];
+              const occupancy=Math.min(100,Math.round((classe.membres.length/classe.capacite)*100));
+              return <Card className="class-card class-management-card" key={classe.id}>
                 <header className="class-card-header">
                   <div>
-                    <Badge variant="primary">{classe.statut}</Badge>
+                    <div className="class-card-kicker"><Badge variant="primary">{classe.statut}</Badge><span>{classe.formation}</span></div>
                     <h2 className="class-title">{classe.nom}</h2>
-                    <p>{classe.formation}</p>
+                    {classe.description&&<p className="class-description">{classe.description}</p>}
                   </div>
-                  <span className="stat-icon"><UsersRound size={21} /></span>
+                  <button className="class-edit-button" type="button" onClick={()=>setEditingClassId(classe.id)} aria-label={`Modifier ${classe.nom}`}><Pencil size={17}/></button>
                 </header>
-                <div className="course-meta">
-                  <span><CalendarDays size={15} /> {new Date(classe.dateDebut).toLocaleDateString("fr-FR")} — {new Date(classe.dateFin).toLocaleDateString("fr-FR")}</span>
-                  <span><UsersRound size={15} /> {classe.membres.length}/{classe.capacite}</span>
+                <div className="class-period"><CalendarDays size={17}/><span><small>Période de la classe</small><strong>{new Date(classe.dateDebut).toLocaleDateString("fr-FR")} — {new Date(classe.dateFin).toLocaleDateString("fr-FR")}</strong></span></div>
+                <div className="class-capacity">
+                  <div><span>Participants</span><strong>{classe.membres.length} / {classe.capacite}</strong></div>
+                  <div className="class-capacity-track"><i style={{width:`${occupancy}%`}}/></div>
                 </div>
-
-                <details className="upload-box">
-                  <summary>Modifier la classe</summary>
-                  <form className="stack section-space" onSubmit={(event) => submitClass(event, classe.id)}>
-                    <ClassFields formations={formations} value={classe} />
-                    <Button type="submit" loading={busy === `class-${classe.id}`}>Enregistrer</Button>
-                  </form>
-                </details>
-
-                <div className="form-section form-section-spaced">
-                  <div className="row spread"><strong>Participants ({classe.membres.length}/{classe.capacite})</strong></div>
-                  {classe.membres.length ? (
-                    <div className="learning-list">
-                      {classe.membres.map((member) => (
-                        <div className="learning-row compact-row" key={member.id}>
-                          <div><strong>{member.nom}</strong><p>{member.email}</p></div>
-                          <Badge variant="success">{member.statut}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <p>Aucun participant affecté.</p>}
-                  <Button variant="secondary" loading={busy === `candidates-${classe.id}`} onClick={() => candidates(classe.id)}>
-                    Afficher les participants éligibles
-                  </Button>
-                  {eligible[classe.id]?.map((participant) => (
-                    <div className="learning-row compact-row" key={participant.id}>
-                      <div><strong>{participant.nom}</strong><p>{participant.email}</p></div>
-                      <Button size="sm" loading={busy === `assign-${participant.id}`} onClick={() => assign(classe.id, participant.id)}>Affecter</Button>
-                    </div>
-                  ))}
+                <div className="class-next-session">
+                  <span className="class-next-icon"><Video size={18}/></span>
+                  <div><small>Prochaine séance</small>{nextSession?<><strong>{nextSession.titre}</strong><span>{new Date(nextSession.dateDebut).toLocaleString("fr-FR")} · {formatDuration(nextSession)}</span></>:<strong>Aucune séance planifiée</strong>}</div>
                 </div>
-
-                <div className="form-section form-section-spaced">
-                  <strong>Séances</strong>
-                  <form className="stack upload-box" onSubmit={(event) => submitSession(event, classe.id)}>
-                    <SessionFields classStart={classe.dateDebut} classEnd={classe.dateFin} />
-                    <Button type="submit" loading={busy === `new-session-${classe.id}`}>Planifier</Button>
-                  </form>
-                  <div className="session-list">
-                    {classe.seances.map((session) => {
-                      return (
-                        <article className="session-row" key={session.id}>
-                          <div>
-                            <SessionTiming session={session} now={now} />
-                            <h3 className="session-title">{session.titre}</h3>
-                            <span className="session-date"><Clock3 size={15} /> {new Date(session.dateDebut).toLocaleString("fr-FR")} · {formatDuration(session)}</span>
-                            {session.statut === "PLANIFIEE" && (
-                              <details className="upload-box">
-                                <summary>Modifier</summary>
-                                <form className="stack section-space" onSubmit={(event) => submitSession(event, classe.id, session.id)}>
-                                  <SessionFields value={session} classStart={classe.dateDebut} classEnd={classe.dateFin} />
-                                  <Button type="submit" loading={busy === `session-${session.id}`}>Enregistrer</Button>
-                                </form>
-                              </details>
-                            )}
-                          </div>
-                          {session.statut === "PLANIFIEE" && (
-                            <div className="row compact">
-                              <Button size="sm" disabled={!isSessionJoinable(session, now)} onClick={() => setJoinTarget(session)}><ExternalLink size={15} /> {isSessionJoinable(session, now) ? "Préparer la séance" : "Disponible en direct"}</Button>
-                              <Button variant="danger" size="sm" onClick={() => setCancelTarget(session)}>Annuler</Button>
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
+                <div className="class-primary-actions">
+                  <Button onClick={()=>setPlanningClassId(classe.id)}><Plus size={17}/> Nouvelle séance</Button>
+                  <Button variant="secondary" onClick={()=>setSessionsClassId(classe.id)}><ListVideo size={17}/> Voir les séances <span className="action-count">{classe.seances.length}</span></Button>
                 </div>
-              </Card>
-            ))}
+                <Button className="class-participants-button" variant="ghost" onClick={()=>setParticipantsClassId(classe.id)}><UsersRound size={17}/> Voir ou ajouter des participants</Button>
+              </Card>;
+            })}
           </div>
         )}
 
@@ -326,9 +286,39 @@ export default function Page() {
             </div>
           </form>
         </Modal>
+        <Modal open={Boolean(editingClass)} title="Modifier la classe" description={editingClass?.nom} onClose={()=>setEditingClassId(null)}>
+          {editingClass&&<form className="stack" onSubmit={(event)=>submitClass(event,editingClass.id)}>
+            <ClassFields formations={formations} value={editingClass}/>
+            <div className="modal-actions"><Button type="button" variant="secondary" onClick={()=>setEditingClassId(null)}>Fermer</Button><Button type="submit" loading={busy===`class-${editingClass.id}`}>Enregistrer</Button></div>
+          </form>}
+        </Modal>
+        <Modal open={Boolean(planningClass)} title="Planifier une nouvelle séance" description={planningClass?`${planningClass.nom} · du ${new Date(planningClass.dateDebut).toLocaleDateString("fr-FR")} au ${new Date(planningClass.dateFin).toLocaleDateString("fr-FR")}`:""} onClose={()=>setPlanningClassId(null)} panelClassName="class-action-modal">
+          {planningClass&&<form className="stack" onSubmit={(event)=>submitSession(event,planningClass.id)}>
+            <SessionFields classStart={planningClass.dateDebut} classEnd={planningClass.dateFin}/>
+            <div className="modal-actions"><Button type="button" variant="secondary" onClick={()=>setPlanningClassId(null)}>Annuler</Button><Button type="submit" loading={busy===`new-session-${planningClass.id}`}><CalendarDays size={17}/> Planifier la séance</Button></div>
+          </form>}
+        </Modal>
+        <Modal open={Boolean(sessionsClass)} title="Séances de la classe" description={sessionsClass?.nom} onClose={()=>setSessionsClassId(null)} panelClassName="class-action-modal">
+          {sessionsClass&&<div className="class-modal-content">
+            <div className="class-modal-toolbar"><span><strong>{sessionsClass.seances.length}</strong> séance{sessionsClass.seances.length>1?"s":""}</span><Button size="sm" onClick={()=>{setSessionsClassId(null);setPlanningClassId(sessionsClass.id)}}><Plus size={16}/> Nouvelle séance</Button></div>
+            {sessionsClass.seances.length?<div className="session-list class-session-list">{sessionsClass.seances.map((session)=><article className="session-row" key={session.id}>
+              <div><SessionTiming session={session} now={now}/><h3 className="session-title">{session.titre}</h3><span className="session-date"><Clock3 size={15}/> {new Date(session.dateDebut).toLocaleString("fr-FR")} · {formatDuration(session)}</span>
+                {session.statut==="PLANIFIEE"&&<details className="session-edit"><summary>Modifier la séance</summary><form className="stack section-space" onSubmit={(event)=>submitSession(event,sessionsClass.id,session.id)}><SessionFields value={session} classStart={sessionsClass.dateDebut} classEnd={sessionsClass.dateFin}/><Button type="submit" loading={busy===`session-${session.id}`}>Enregistrer</Button></form></details>}
+              </div>
+              {session.statut==="PLANIFIEE"&&<div className="row compact"><Button size="sm" disabled={!isSessionJoinable(session,now)} onClick={()=>setJoinTarget(session)}><ExternalLink size={15}/> {isSessionJoinable(session,now)?"Préparer":"Accès bientôt"}</Button><Button variant="danger" size="sm" onClick={()=>setCancelTarget(session)}>Annuler</Button></div>}
+            </article>)}</div>:<div className="class-modal-empty"><Video size={28}/><h3>Aucune séance planifiée</h3><p>Créez le premier rendez-vous de cette classe.</p><Button onClick={()=>{setSessionsClassId(null);setPlanningClassId(sessionsClass.id)}}><Plus size={17}/> Planifier une séance</Button></div>}
+          </div>}
+        </Modal>
+        <Modal open={Boolean(participantsClass)} title="Participants de la classe" description={participantsClass?.nom} onClose={()=>setParticipantsClassId(null)} panelClassName="class-action-modal">
+          {participantsClass&&<div className="class-modal-content">
+            <div className="class-modal-toolbar"><span><strong>{participantsClass.membres.length}</strong> participant{participantsClass.membres.length>1?"s":""} · {participantsClass.capacite-participantsClass.membres.length} place{participantsClass.capacite-participantsClass.membres.length>1?"s":""} disponible{participantsClass.capacite-participantsClass.membres.length>1?"s":""}</span><Button size="sm" loading={busy===`candidates-${participantsClass.id}`} onClick={()=>candidates(participantsClass.id)}><UserPlus size={16}/> Ajouter</Button></div>
+            {participantsClass.membres.length?<div className="participant-management-list">{participantsClass.membres.map((member)=><div className="participant-management-row" key={member.id}><span className="participant-avatar">{member.nom.slice(0,1).toLocaleUpperCase("fr")}</span><div><strong>{member.nom}</strong><p>{member.email}</p></div><Badge variant="success">{member.statut}</Badge></div>)}</div>:<div className="class-modal-empty compact"><UsersRound size={26}/><h3>Aucun participant affecté</h3><p>Ajoutez les participants éligibles à cette classe.</p></div>}
+            {eligible[participantsClass.id]&&<section className="eligible-participants"><div><span className="eyebrow">Participants éligibles</span><h3>Ajouter à la classe</h3></div>{eligible[participantsClass.id].length?eligible[participantsClass.id].map((participant)=><div className="participant-management-row" key={participant.id}><span className="participant-avatar soft">{participant.nom.slice(0,1).toLocaleUpperCase("fr")}</span><div><strong>{participant.nom}</strong><p>{participant.email}</p></div><Button size="sm" loading={busy===`assign-${participant.id}`} onClick={()=>assign(participantsClass.id,participant.id)}>Affecter</Button></div>):<p className="muted">Tous les participants éligibles sont déjà affectés.</p>}</section>}
+          </div>}
+        </Modal>
         <Modal
           open={Boolean(joinTarget)}
-          title="Salle d’attente NexaLearn"
+          title="Salle d’attente Khotwa"
           description="Contrôlez la séance avant d’ouvrir votre salle Jitsi formateur."
           onClose={() => setJoinTarget(null)}
         >
@@ -339,7 +329,7 @@ export default function Page() {
                 <h3>{joinTarget.titre}</h3>
                 <p><Clock3 aria-hidden="true" size={16} /> {new Date(joinTarget.dateDebut).toLocaleString("fr-FR")}</p>
               </div>
-              <p className="muted">Vous ouvrirez la salle en premier comme hôte. Votre nom de compte NexaLearn sera utilisé automatiquement et les participants pourront ensuite vous rejoindre.</p>
+              <p className="muted">Vous ouvrirez la salle en premier comme hôte. Votre nom de compte Khotwa sera utilisé automatiquement et les participants pourront ensuite vous rejoindre.</p>
               <div className="modal-actions">
                 <Button variant="secondary" onClick={() => setJoinTarget(null)} disabled={busy === `join-${joinTarget.id}`}>Retour</Button>
                 <Button loading={busy === `join-${joinTarget.id}`} onClick={() => join(joinTarget.id)}>

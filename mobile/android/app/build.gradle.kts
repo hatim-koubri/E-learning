@@ -24,7 +24,7 @@ android {
         applicationId = "ma.elearning.elearning_mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -37,6 +37,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+configurations.all {
+    // Jitsi already embeds the Media3 RTSP classes in react-native-video.
+    // Keeping the standalone module would package the same classes twice.
+    exclude(group = "androidx.media3", module = "media3-exoplayer-rtsp")
 }
 
 flutter {

@@ -18,11 +18,14 @@ public class QuizService {
  private final QuizRepository quizzes; private final FormationRepository formations; private final InscriptionRepository inscriptions;
  private final ProgressionChapitreRepository progressions; private final TentativeQuizRepository attempts;
  private final EngagementService engagement;
+ private final CertificateEligibilityService eligibility; private final CertificateEligibilityNotificationService eligibilityNotifications;
  private final Clock clock;
  public QuizService(QuizRepository quizzes,FormationRepository formations,InscriptionRepository inscriptions,
-  ProgressionChapitreRepository progressions,TentativeQuizRepository attempts,EngagementService engagement,Clock clock){
+  ProgressionChapitreRepository progressions,TentativeQuizRepository attempts,EngagementService engagement,Clock clock,
+  CertificateEligibilityService eligibility,CertificateEligibilityNotificationService eligibilityNotifications){
   this.quizzes=quizzes;this.formations=formations;this.inscriptions=inscriptions;this.progressions=progressions;this.attempts=attempts;this.engagement=engagement;
   this.clock=clock;
+  this.eligibility=eligibility;this.eligibilityNotifications=eligibilityNotifications;
  }
  @Transactional(readOnly=true)
  public List<QuizAdmin> trainerList(String email,Long formationId){
@@ -77,6 +80,7 @@ public class QuizService {
   BigDecimal percent=max.signum()==0?BigDecimal.ZERO:score.multiply(BigDecimal.valueOf(100)).divide(max,2,RoundingMode.HALF_UP);
   Instant submittedAt=clock.instant();TentativeQuiz a=new TentativeQuiz();a.setQuiz(q);a.setInscription(i);a.submit(score,max,percent.compareTo(q.getScoreMinimal())>=0,submittedAt);
   a=attempts.saveAndFlush(a);engagement.recordActivity(email,q.getFormation().getId(),ActivityType.QUIZ_SOUMIS,"quiz-attempt:"+a.getId(),10);
+  if(Boolean.TRUE.equals(a.getReussi()))eligibilityNotifications.notifyIfEligible(i);
   List<ReviewChapter> reviewChapters=Boolean.TRUE.equals(a.getReussi())?List.of():q.getFormation().getModules().stream()
    .flatMap(module->module.getChapitres().stream()).limit(3).map(chapter->new ReviewChapter(chapter.getId(),chapter.getTitre())).toList();
   return new QuizResult(a.getId(),score,max,percent,Boolean.TRUE.equals(a.getReussi()),submittedAt,feedback,reviewChapters);
@@ -104,7 +108,7 @@ public class QuizService {
   PlannedQuiz finalPlan=finalQuiz==null?null:planned(finalQuiz,null,chaptersDone&&modulesPassed,inscription);
   int required=modules.size()+(finalPlan==null?0:1);
   int passed=(int)modules.stream().filter(PlannedQuiz::reussi).count()+(finalPlan!=null&&finalPlan.reussi()?1:0);
-  return new EvaluationPlan(modules,finalPlan,passed,required,chaptersDone&&required>0&&passed==required);
+  return new EvaluationPlan(modules,finalPlan,passed,required,eligibility.isEligible(inscription));
  }
  private PlannedQuiz planned(Quiz quiz,FormationModule module,boolean available,Inscription inscription){
   boolean passed=attempts.existsByInscriptionIdAndQuizIdAndReussiTrue(inscription.getId(),quiz.getId());

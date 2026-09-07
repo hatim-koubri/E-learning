@@ -3,6 +3,7 @@ package ma.elearning.auth;
 import ma.elearning.api.AuthDtos.*;
 import ma.elearning.common.BusinessException;
 import ma.elearning.security.JwtService;
+import ma.elearning.engagement.*;
 import ma.elearning.storage.ObjectStorage;
 import ma.elearning.storage.UploadValidator;
 import ma.elearning.user.*;
@@ -34,19 +35,25 @@ public class AuthService {
     private final UploadValidator uploads;
     private final Duration resetDuration;
     private final String mailFrom;
+    private final NotificationEmailQueue emailQueue;
     public AuthService(UserRepository users, PasswordResetTokenRepository tokens, PasswordEncoder encoder,
                        JwtService jwt, JavaMailSender mail, TrainerCredentialRepository credentials,
                        ObjectStorage storage, UploadValidator uploads,
                        @Value("${app.password-reset.expiration-minutes}") long resetMinutes,
-                       @Value("${app.mail.from}") String mailFrom) {
+                       @Value("${app.mail.from}") String mailFrom, NotificationEmailQueue emailQueue) {
         this.users=users; this.tokens=tokens; this.encoder=encoder; this.jwt=jwt; this.mail=mail;
         this.credentials=credentials; this.storage=storage; this.uploads=uploads;
-        this.resetDuration=Duration.ofMinutes(resetMinutes); this.mailFrom=mailFrom;
+        this.resetDuration=Duration.ofMinutes(resetMinutes); this.mailFrom=mailFrom; this.emailQueue=emailQueue;
     }
     @Transactional public UserResponse registerParticipant(RegisterRequest r) {
         Participant p = new Participant();
         prepare(p,r,Role.PARTICIPANT,AccountStatus.ACTIF);
-        return toResponse(users.save(p));
+        p=users.saveAndFlush(p);
+        emailQueue.enqueue(p,NotificationCategory.ACCOUNT_WELCOME,"participant-welcome:"+p.getId(),
+                "Bienvenue sur NexaLearn",
+                "Bonjour "+p.getNom()+",\n\nVotre compte Participant a bien été créé. NexaLearn vous permet de découvrir des formations et de suivre votre progression.",
+                "/login",true);
+        return toResponse(p);
     }
     @Transactional public UserResponse registerFormateur(TrainerRegisterRequest r,
             MultipartFile cv,List<MultipartFile> additionalDocuments) {

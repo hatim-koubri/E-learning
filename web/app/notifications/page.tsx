@@ -17,6 +17,8 @@ const labels: Record<NotificationCategory, string> = {
   REPONSE_FORMATEUR: "Avis et réponses",
   OBJECTIF_HEBDOMADAIRE: "Objectif hebdomadaire",
   COMPTE_FORMATEUR: "Décisions relatives au compte formateur",
+  ACCOUNT_WELCOME: "Bienvenue",
+  CERTIFICATE_AVAILABLE: "Certificats",
 };
 
 function messageFor(error: unknown) {

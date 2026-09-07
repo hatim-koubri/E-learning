@@ -9,7 +9,7 @@ import {KnowledgePath} from "@/components/KnowledgePath";
 import {AppShell} from "@/components/AppShell";
 import {MotionObserver} from "@/components/MotionObserver";
 import {PublicHeader} from "@/components/PublicHeader";
-import {SessionTiming} from "@/components/SessionTiming";
+import {SessionTiming, sessionCountdown} from "@/components/SessionTiming";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import {Modal, Tabs} from "@/components/ui";
 import {api, currentUser} from "@/lib/api";
@@ -45,19 +45,18 @@ describe("Sprint 6 — placement, mouvement et clavier", () => {
     vi.restoreAllMocks();
   });
 
-  it("intègre le statut et la progression dans la carte illustrative du hero", async () => {
+  it("présente la plateforme sans simuler la progression d’un compte", async () => {
     render(<Home />);
-    const preview = screen.getByLabelText("Aperçu illustratif de l’espace d’apprentissage");
+    const preview = screen.getByLabelText("Présentation publique de la plateforme Khotwa");
 
-    expect(preview).toHaveTextContent("Mon apprentissage");
-    expect(preview).toHaveTextContent("Classe en direct");
-    expect(preview).toHaveTextContent("68 %");
-    expect(preview).toHaveTextContent("Donnée de démonstration");
-    expect(screen.getByRole("progressbar", {name: "Progression illustrative du parcours"}))
-      .toHaveAttribute("aria-valuenow", "68");
-    expect(preview).toHaveTextContent("Reprendre le dernier chapitre");
-    expect(preview).toHaveTextContent("Préparer le prochain QCM");
-    expect(preview).toHaveTextContent("Rejoindre votre classe");
+    expect(preview).toHaveTextContent("Comment apprend-on sur Khotwa ?");
+    expect(preview).toHaveTextContent("Explorer");
+    expect(preview).toHaveTextContent("Apprendre");
+    expect(preview).toHaveTextContent("Participer");
+    expect(preview).toHaveTextContent("Votre progression commence après l’inscription");
+    expect(preview).not.toHaveTextContent("68 %");
+    expect(preview).not.toHaveTextContent("Parcours actif");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(await screen.findByText("Le catalogue se prépare")).toBeInTheDocument();
   });
 
@@ -170,6 +169,18 @@ describe("Sprint 6 — placement, mouvement et clavier", () => {
     expect(screen.getByText("Accessible maintenant")).toBeInTheDocument();
     unmount();
     expect(clear).toHaveBeenCalled();
+  });
+
+  it("affiche les heures aujourd’hui et uniquement les jours pour une date future", () => {
+    const now = new Date(2026, 7, 25, 10, 0).getTime();
+    const session = (start: Date): Session => ({
+      id: start.getTime(), titre: "Atelier", dateDebut: start.toISOString(),
+      dateFin: new Date(start.getTime() + 3_600_000).toISOString(),
+      fuseauHoraire: "Africa/Casablanca", statut: "PLANIFIEE",
+    });
+
+    expect(sessionCountdown(session(new Date(2026, 7, 25, 13, 30)), now)).toBe("Commence dans 3 h 30 min");
+    expect(sessionCountdown(session(new Date(2026, 7, 26, 9, 0)), now)).toBe("Commence dans 1 jour");
   });
 
   it("restaure une note optimiste lorsque le serveur refuse la mise à jour", async () => {

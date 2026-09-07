@@ -22,7 +22,7 @@ public class QuizController {
  org.springframework.http.ResponseEntity<byte[]> certificate(Authentication a,@PathVariable Long formationId){
   byte[] pdf=certificates.generate(a.getName(),formationId);
   return org.springframework.http.ResponseEntity.ok()
-   .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=certificat-nexalearn-"+formationId+".pdf")
+   .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=certificat-khotwa-"+formationId+".pdf")
    .body(pdf);
  }
 }

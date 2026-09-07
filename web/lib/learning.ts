@@ -1,5 +1,5 @@
 import type {Niveau,ResourceType} from "./formations";
-export type CatalogueItem={id:number;titre:string;description:string;imageUrl?:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses:number;prixAvecClasses:number;offreClasses:boolean;classeActive:boolean;formateur:string;nombreModules:number;nombreChapitres:number};
+export type CatalogueItem={id:number;titre:string;description:string;imageUrl?:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses:number;prixAvecClasses:number;offreClasses:boolean;classeActive:boolean;formateur:string;nombreModules:number;nombreChapitres:number;inscrit?:boolean};
 export type CataloguePage={content:CatalogueItem[];page:number;size:number;totalElements:number;totalPages:number};
 export type PublicResource={id:number;type:ResourceType;titre:string;ordre:number;verrouille:boolean;url?:string};
 export type PublicChapter={id:number;titre:string;description?:string;ordre:number;verrouille:boolean;ressources:PublicResource[]};

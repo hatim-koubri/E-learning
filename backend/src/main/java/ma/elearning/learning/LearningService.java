@@ -10,6 +10,7 @@ import ma.elearning.user.*;
 import ma.elearning.virtualclass.ClasseRepository;
 import ma.elearning.quiz.QuizRepository;
 import ma.elearning.quiz.TentativeQuizRepository;
+import ma.elearning.quiz.CertificateEligibilityNotificationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
@@ -31,16 +32,19 @@ public class LearningService {
  private final EngagementService engagement;
  private final ClasseRepository classes;
  private final QuizRepository quizzes;private final TentativeQuizRepository attempts;
+ private final CertificateEligibilityNotificationService eligibilityNotifications;
  public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
   InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
   @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations,EngagementService engagement,
-  ClasseRepository classes,QuizRepository quizzes,TentativeQuizRepository attempts){
+  ClasseRepository classes,QuizRepository quizzes,TentativeQuizRepository attempts,
+  CertificateEligibilityNotificationService eligibilityNotifications){
   this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
   this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
   this.operations=operations;
   this.engagement=engagement;
   this.classes=classes;
   this.quizzes=quizzes;this.attempts=attempts;
+  this.eligibilityNotifications=eligibilityNotifications;
  }
  @Transactional
  public UpgradeResponse upgrade(String email,Long formationId,String key){
@@ -51,7 +55,7 @@ public class LearningService {
     throw error(HttpStatus.CONFLICT,"IDEMPOTENCY_KEY_CONFLICT","Cette clé est déjà utilisée.");
    return upgradeResponse(previous);
   }
-  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+  Inscription i=inscriptions.findLockedByParticipantEmailAndFormationId(email,formationId)
    .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Achetez d'abord l'accès au contenu."));
   if(i.getTypeAcces()==TypeAcces.CONTENU_ET_CLASSES)
    throw error(HttpStatus.CONFLICT,"ALREADY_UPGRADED","L'accès avec classes est déjà actif.");
@@ -126,7 +130,7 @@ public class LearningService {
  }
  @Transactional
  public ProgressResponse progress(String email,Long formationId,Long chapterId,boolean completed,int seconds){
-  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+  Inscription i=inscriptions.findLockedByParticipantEmailAndFormationId(email,formationId)
    .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Une inscription active est requise."));
   Chapitre chapter=chapitres.findById(chapterId).orElseThrow(this::notFound);
   if(!chapter.getModule().getFormation().getId().equals(formationId))throw notFound();
@@ -155,6 +159,7 @@ public class LearningService {
   i.setProgression(percent);inscriptions.save(i);
   engagement.recordPosition(email,formationId,new LearningPositionRequest(chapter.getModule().getId(),chapterId,null));
   if(completed)engagement.recordActivity(email,formationId,ActivityType.CHAPITRE_TERMINE,"chapter:"+chapterId,10);
+  if(completed)eligibilityNotifications.notifyIfEligible(i);
   return new ProgressResponse(formationId,chapterId,p.isTermine(),p.getPositionVideoSecondes(),percent);
  }
  public boolean hasFullAccess(Formation f,String email){

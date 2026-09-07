@@ -90,7 +90,9 @@ export type NotificationCategory =
   | "QUIZ"
   | "REPONSE_FORMATEUR"
   | "OBJECTIF_HEBDOMADAIRE"
-  | "COMPTE_FORMATEUR";
+  | "COMPTE_FORMATEUR"
+  | "ACCOUNT_WELCOME"
+  | "CERTIFICATE_AVAILABLE";
 export type AppNotification = {
   id: number;
   categorie: NotificationCategory;
