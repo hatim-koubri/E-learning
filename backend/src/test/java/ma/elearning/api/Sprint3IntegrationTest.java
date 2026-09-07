@@ -6,6 +6,7 @@ import ma.elearning.api.QuizDtos.*;
 import ma.elearning.formation.*;
 import ma.elearning.learning.InscriptionRepository;
 import ma.elearning.quiz.QuizService;
+import ma.elearning.quiz.TentativeQuizRepository;
 import ma.elearning.security.JwtService;
 import ma.elearning.storage.ObjectStorage;
 import ma.elearning.user.*;
@@ -28,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class Sprint3IntegrationTest {
  @Autowired MockMvc mvc; @Autowired ObjectMapper json; @Autowired UserRepository users; @Autowired JwtService jwt;
- @Autowired FormationService formationService; @Autowired InscriptionRepository inscriptions; @Autowired QuizService quizService;
+ @Autowired FormationService formationService; @Autowired InscriptionRepository inscriptions; @Autowired QuizService quizService; @Autowired TentativeQuizRepository attempts;
  @MockitoBean ObjectStorage storage;
  private Formateur trainer; private Participant participant; private Admin admin; private Long formationId; private Long previewResource; private Long lockedResource; private Long pdfResource;
  @BeforeEach void setup(){
@@ -92,6 +93,9 @@ class Sprint3IntegrationTest {
   mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json")
    .content(json.writeValueAsString(new Submission(Map.of(q,List.of(answer))))))
    .andExpect(status().isOk()).andExpect(jsonPath("$.pourcentage").value(100.0)).andExpect(jsonPath("$.reussi").value(true));
+  mvc.perform(get("/api/participant/formations/"+formationId+"/quiz").header("Authorization","Bearer "+token))
+   .andExpect(status().isOk()).andExpect(jsonPath("$[0].dernierPourcentage").value(100.0))
+   .andExpect(jsonPath("$[0].dernierResultat").value(true)).andExpect(jsonPath("$[0].derniereSoumission").isString());
  }
  @Test void progressionEnforcesOrderAndRemainsIdempotent() throws Exception{
   String token=jwt.generate(participant);mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+token)).andExpect(status().isOk());
@@ -111,13 +115,48 @@ class Sprint3IntegrationTest {
    .header("Authorization","Bearer "+token).contentType("application/json").content("{\"termine\":true,\"positionVideoSecondes\":0}")).andExpect(status().isOk());
   QuizAdmin created=quizService.create(trainer.getEmail(),formationId,new QuizRequest("Limites",new BigDecimal("50"),true,true,List.of(
    new QuestionEdit(null,"Bonne réponse ?",0,BigDecimal.ONE,List.of(new AnswerEdit(null,"Oui",true,0),new AnswerEdit(null,"Non",false,1))))));
+  QuizAdmin otherQuiz=quizService.create(trainer.getEmail(),formationId,new QuizRequest("Quiz indépendant",new BigDecimal("50"),false,true,List.of(
+   new QuestionEdit(null,"Autre réponse ?",0,BigDecimal.ONE,List.of(new AnswerEdit(null,"Oui",true,0),new AnswerEdit(null,"Non",false,1))))));
   Long question=created.questions().getFirst().id(),answer=created.questions().getFirst().reponses().getFirst().id();
   mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json")
    .content(json.writeValueAsString(new Submission(Map.of(999L,List.of(answer)))))).andExpect(status().isBadRequest());
   String submission=json.writeValueAsString(new Submission(Map.of(question,List.of(answer))));
   for(int n=0;n<3;n++)mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json").content(submission)).andExpect(status().isOk());
+  var ownQuizzes=quizService.participantList(participant.getEmail(),formationId);
+  assertEquals(0,ownQuizzes.stream().filter(q->q.id().equals(created.id())).findFirst().orElseThrow().tentativesRestantes());
+  assertEquals(3,ownQuizzes.stream().filter(q->q.id().equals(otherQuiz.id())).findFirst().orElseThrow().tentativesRestantes());
+  Participant another=save(new Participant(),"another@s3.test",Role.PARTICIPANT);String anotherToken=jwt.generate(another);
+  mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+anotherToken)).andExpect(status().isOk());
+  for(var module:formationService.detail(trainer.getEmail(),formationId).modules())for(var chapter:module.chapitres())mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+chapter.id()+"/progression")
+   .header("Authorization","Bearer "+anotherToken).contentType("application/json").content("{\"termine\":true,\"positionVideoSecondes\":0}")).andExpect(status().isOk());
+  assertTrue(quizService.participantList(another.getEmail(),formationId).stream().allMatch(q->q.tentativesRestantes()==3));
+  mvc.perform(get("/api/participant/formations/"+formationId+"/quiz").header("Authorization","Bearer "+token))
+   .andExpect(status().isOk()).andExpect(jsonPath("$[0].tentativesRestantes").value(0))
+   .andExpect(jsonPath("$[0].prochaineDisponibilite").isString());
   mvc.perform(post("/api/participant/quiz/"+created.id()+"/tentatives").header("Authorization","Bearer "+token).contentType("application/json").content(submission))
-   .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("ATTEMPT_LIMIT"));
+   .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ATTEMPT_LIMIT"));
  }
+ @Test void concurrentQuizSubmissionsCannotExceedTheThirdAttempt() throws Exception{
+  String token=jwt.generate(participant);mvc.perform(post("/api/participant/formations/"+formationId+"/inscription").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+  for(var module:formationService.detail(trainer.getEmail(),formationId).modules())for(var chapter:module.chapitres())mvc.perform(put("/api/participant/formations/"+formationId+"/chapitres/"+chapter.id()+"/progression")
+   .header("Authorization","Bearer "+token).contentType("application/json").content("{\"termine\":true,\"positionVideoSecondes\":0}")).andExpect(status().isOk());
+  QuizAdmin quiz=quizService.create(trainer.getEmail(),formationId,new QuizRequest("Concurrence",new BigDecimal("50"),false,true,List.of(
+   new QuestionEdit(null,"Question ?",0,BigDecimal.ONE,List.of(new AnswerEdit(null,"Oui",true,0),new AnswerEdit(null,"Non",false,1))))));
+  Long question=quiz.questions().getFirst().id(),answer=quiz.questions().getFirst().reponses().getFirst().id();
+  Submission submission=new Submission(Map.of(question,List.of(answer)));
+  quizService.submit(participant.getEmail(),quiz.id(),submission);quizService.submit(participant.getEmail(),quiz.id(),submission);
+  var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+  try{
+   var start=new java.util.concurrent.CountDownLatch(1);
+   var tasks=List.of(
+    pool.submit(()->{start.await();return captureSubmit(quiz.id(),submission);}),
+    pool.submit(()->{start.await();return captureSubmit(quiz.id(),submission);})
+   );
+   start.countDown();List<String> results=List.of(tasks.get(0).get(),tasks.get(1).get());
+   assertEquals(1,results.stream().filter("OK"::equals).count());assertEquals(1,results.stream().filter("ATTEMPT_LIMIT"::equals).count());
+   assertEquals(3,attempts.findByInscriptionIdAndQuizIdOrderByDatePassageAsc(inscriptions.findByParticipantEmailAndFormationId(participant.getEmail(),formationId).orElseThrow().getId(),quiz.id()).size());
+  }finally{pool.shutdownNow();}
+ }
+ private String captureSubmit(Long quizId,Submission submission){try{quizService.submit(participant.getEmail(),quizId,submission);return "OK";}catch(ma.elearning.common.BusinessException exception){return exception.getCode();}}
  private <T extends User>T save(T u,String email,Role role){u.setNom("Test");u.setEmail(email);u.setPasswordHash("hash");u.setRole(role);u.setStatut(AccountStatus.ACTIF);return (T)users.saveAndFlush(u);}
 }

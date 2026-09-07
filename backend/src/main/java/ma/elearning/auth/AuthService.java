@@ -3,6 +3,9 @@ package ma.elearning.auth;
 import ma.elearning.api.AuthDtos.*;
 import ma.elearning.common.BusinessException;
 import ma.elearning.security.JwtService;
+import ma.elearning.engagement.*;
+import ma.elearning.storage.ObjectStorage;
+import ma.elearning.storage.UploadValidator;
 import ma.elearning.user.*;
 import org.slf4j.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +15,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.time.*;
@@ -26,26 +30,67 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final JavaMailSender mail;
+    private final TrainerCredentialRepository credentials;
+    private final ObjectStorage storage;
+    private final UploadValidator uploads;
     private final Duration resetDuration;
     private final String mailFrom;
+    private final NotificationEmailQueue emailQueue;
     public AuthService(UserRepository users, PasswordResetTokenRepository tokens, PasswordEncoder encoder,
-                       JwtService jwt, JavaMailSender mail,
+                       JwtService jwt, JavaMailSender mail, TrainerCredentialRepository credentials,
+                       ObjectStorage storage, UploadValidator uploads,
                        @Value("${app.password-reset.expiration-minutes}") long resetMinutes,
-                       @Value("${app.mail.from}") String mailFrom) {
+                       @Value("${app.mail.from}") String mailFrom, NotificationEmailQueue emailQueue) {
         this.users=users; this.tokens=tokens; this.encoder=encoder; this.jwt=jwt; this.mail=mail;
-        this.resetDuration=Duration.ofMinutes(resetMinutes); this.mailFrom=mailFrom;
+        this.credentials=credentials; this.storage=storage; this.uploads=uploads;
+        this.resetDuration=Duration.ofMinutes(resetMinutes); this.mailFrom=mailFrom; this.emailQueue=emailQueue;
     }
     @Transactional public UserResponse registerParticipant(RegisterRequest r) {
         Participant p = new Participant();
         prepare(p,r,Role.PARTICIPANT,AccountStatus.ACTIF);
-        return toResponse(users.save(p));
+        p=users.saveAndFlush(p);
+        emailQueue.enqueue(p,NotificationCategory.ACCOUNT_WELCOME,"participant-welcome:"+p.getId(),
+                "Bienvenue sur NexaLearn",
+                "Bonjour "+p.getNom()+",\n\nVotre compte Participant a bien été créé. NexaLearn vous permet de découvrir des formations et de suivre votre progression.",
+                "/login",true);
+        return toResponse(p);
     }
-    @Transactional public UserResponse registerFormateur(RegisterRequest r) {
+    @Transactional public UserResponse registerFormateur(TrainerRegisterRequest r,
+            MultipartFile cv,List<MultipartFile> additionalDocuments) {
+        List<DocumentUpload> documents=new ArrayList<>();
+        addDocuments(documents,cv==null?null:List.of(cv),TrainerDocumentType.CV);
+        addDocuments(documents,additionalDocuments,TrainerDocumentType.AUTRE);
+        if(documents.stream().noneMatch(document->document.type()==TrainerDocumentType.CV)) throw new BusinessException(HttpStatus.BAD_REQUEST,"TRAINER_CV_REQUIRED",
+                "Ajoutez votre CV.");
+        if(documents.size()>5) throw new BusinessException(HttpStatus.BAD_REQUEST,"TOO_MANY_TRAINER_DOCUMENTS",
+                "Vous pouvez envoyer un CV et au maximum 4 documents complémentaires.");
         Formateur f = new Formateur();
-        prepare(f,r,Role.FORMATEUR,AccountStatus.EN_ATTENTE);
+        prepare(f,new RegisterRequest(r.nom(),r.email(),r.telephone(),r.password()),Role.FORMATEUR,AccountStatus.EN_ATTENTE);
+        f.setSpecialite(r.specialite().strip()); f.setBiographie(r.biographie().strip());
+        users.saveAndFlush(f);
+        for(DocumentUpload upload:documents) storeCredential(f,upload);
         log.info("Nouvelle demande formateur pour {}", normalize(r.email()));
+        return toResponse(f);
+    }
+    /** Internal compatibility helper for legacy service tests; the HTTP endpoint always requires documents. */
+    @Deprecated(forRemoval=false)
+    @Transactional public UserResponse registerFormateur(RegisterRequest r) {
+        Formateur f=new Formateur();prepare(f,r,Role.FORMATEUR,AccountStatus.EN_ATTENTE);
         return toResponse(users.save(f));
     }
+    private void addDocuments(List<DocumentUpload> target,List<MultipartFile> files,TrainerDocumentType type){
+        if(files!=null) files.stream().filter(file->file!=null&&!file.isEmpty()).forEach(file->target.add(new DocumentUpload(file,type)));
+    }
+    private void storeCredential(Formateur trainer,DocumentUpload document){
+        var valid=uploads.validateCredential(document.file());
+        String key="trainer-applications/"+trainer.getId()+"/"+UUID.randomUUID()+"."+valid.extension();
+        try(var input=document.file().getInputStream()){storage.put(key,input,valid.size(),valid.contentType());}
+        catch(java.io.IOException exception){throw new BusinessException(HttpStatus.BAD_REQUEST,"INVALID_FILE","Le justificatif ne peut pas être lu.");}
+        TrainerCredential credential=new TrainerCredential();credential.setFormateur(trainer);credential.setType(document.type());
+        credential.setObjectKey(key);credential.setOriginalName(valid.originalName());credential.setContentType(valid.contentType());credential.setSize(valid.size());
+        credentials.save(credential);
+    }
+    private record DocumentUpload(MultipartFile file,TrainerDocumentType type){}
     private void prepare(User user, RegisterRequest r, Role role, AccountStatus status) {
         String email = normalize(r.email());
         if (users.existsByEmail(email)) throw new BusinessException(HttpStatus.CONFLICT,"EMAIL_ALREADY_USED","Cet email est déjà utilisé.");
@@ -57,6 +102,7 @@ public class AuthService {
         User user = users.findByEmail(normalize(r.email()))
                 .orElseThrow(() -> invalidCredentials());
         if (!encoder.matches(r.password(),user.getPasswordHash())) throw invalidCredentials();
+        if (user.getStatut()==AccountStatus.SUPPRIME) throw invalidCredentials();
         if (user.getStatut()==AccountStatus.SUSPENDU)
             throw new BusinessException(HttpStatus.FORBIDDEN,"ACCOUNT_SUSPENDED","Ce compte est suspendu.");
         if (user.getStatut()==AccountStatus.EN_ATTENTE)
@@ -101,4 +147,3 @@ public class AuthService {
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
 }
-

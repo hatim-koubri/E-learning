@@ -23,16 +23,17 @@ import {
   X,
 } from "lucide-react";
 import {useParams, useRouter} from "next/navigation";
-import {useCallback, useEffect, useState, type FormEvent} from "react";
+import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
 import {levelLabel} from "@/components/CourseCard";
 import {FavoriteButton} from "@/components/FavoriteButton";
+import {CourseCheckout, PaymentResultModal, type PaymentResult} from "@/components/CourseCheckout";
 import {Footer} from "@/components/Footer";
 import {KnowledgePath} from "@/components/KnowledgePath";
 import {LearningResourceViewer} from "@/components/LearningResourceViewer";
 import {PublicHeader} from "@/components/PublicHeader";
 import {Alert, Badge, Button, ErrorState, IconButton, Modal, PageSkeleton, Toast} from "@/components/ui";
 import {api, currentUser} from "@/lib/api";
-import type {Review, ReviewSummary} from "@/lib/engagement";
+import type {PrivateNote, Review, ReviewSummary} from "@/lib/engagement";
 import type {CatalogueDetail, PublicResource, ResourceAccess} from "@/lib/learning";
 
 function resourceIcon(type: PublicResource["type"]) {
@@ -55,12 +56,17 @@ export default function CourseDetail() {
   });
   const [noteChapter, setNoteChapter] = useState<number | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [notes, setNotes] = useState<PrivateNote[]>([]);
+  const [bookmarkOverrides, setBookmarkOverrides] = useState<Record<number, boolean>>({});
+  const bookmarkRequests = useRef(new Set<number>());
   const [reviewNote, setReviewNote] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [reportTarget, setReportTarget] = useState<Review | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [selectedOffer, setSelectedOffer] = useState<"content" | "classes">("content");
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -69,8 +75,15 @@ export default function CourseDetail() {
         api<CatalogueDetail>(`/catalogue/${id}`),
         api<ReviewSummary>(`/catalogue/${id}/avis`),
       ]);
-      setCourse(courseResponse);
       if (!courseResponse.classesDisponibles) setSelectedOffer("content");
+      if (courseResponse.inscrit && currentUser()?.role === "PARTICIPANT") {
+        const loadedNotes = await api<PrivateNote[]>(`/participant/notes?formationId=${id}`);
+        setNotes(Array.isArray(loadedNotes) ? loadedNotes : []);
+        setBookmarkOverrides({});
+      } else {
+        setNotes([]);
+      }
+      setCourse(courseResponse);
       setReviews(Array.isArray(reviewResponse?.content)
         ? reviewResponse
         : {moyenne: 0, nombre: 0, content: [], page: 0, totalPages: 0});
@@ -106,24 +119,33 @@ export default function CourseDetail() {
     return true;
   }
 
-  async function enroll(withClasses = false) {
+  async function enroll(withClasses = false, showPaymentResult = false) {
     if (!participantOrLogin()) return;
+    if (showPaymentResult) setPaymentResult(null);
     setBusy(withClasses ? "classes" : "content");
     setError("");
     try {
+      let confirmation = "Votre inscription est confirmée. Le contenu est maintenant accessible.";
       if (withClasses) {
         const response = await api<{montant: number; devise: string}>(`/participant/formations/${id}/inscription-avec-classes`, {
           method: "POST",
           headers: {"Idempotency-Key": crypto.randomUUID()},
         });
-        setNotice(`Inscription confirmée à ${response.montant} ${response.devise}, option classes incluse.`);
+        confirmation = `Inscription confirmée à ${response.montant} ${response.devise}, option classes incluse.`;
       } else {
         await api(`/participant/formations/${id}/inscription`, {method: "POST"});
-        setNotice("Votre inscription est confirmée. Le contenu est maintenant accessible.");
       }
+      if (!showPaymentResult) setNotice(confirmation);
+      setCheckoutOpen(false);
+      if (showPaymentResult) setPaymentResult({status: "success", message: confirmation});
       await load();
     } catch (reason) {
-      setError((reason as Error).message);
+      const message = (reason as Error).message;
+      setError(message);
+      if (showPaymentResult) {
+        setCheckoutOpen(false);
+        setPaymentResult({status: "error", message});
+      }
     } finally {
       setBusy("");
     }
@@ -183,19 +205,84 @@ export default function CourseDetail() {
     }
   }
 
-  async function saveNote(chapterId: number, signet: boolean) {
+  async function saveNote(chapterId: number) {
     setBusy(`note-${chapterId}`);
     try {
-      await api(`/participant/formations/${id}/notes`, {
+      const saved = await api<PrivateNote>(`/participant/formations/${id}/notes`, {
         method: "POST",
-        body: JSON.stringify({chapitreId: chapterId, contenu: noteDraft || null, signet}),
+        body: JSON.stringify({chapitreId: chapterId, contenu: noteDraft || null, signet: false}),
       });
-      setNotice(signet ? "Signet privé ajouté." : "Note privée enregistrée.");
+      setNotes((current) => [saved, ...current]);
+      setNotice("Note privée enregistrée.");
       setNoteDraft("");
       setNoteChapter(null);
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
+      setBusy("");
+    }
+  }
+
+  function startPurchase() {
+    if (!participantOrLogin()) return;
+    const amount = selectedOffer === "classes" ? course?.prixAvecClasses : course?.prix;
+    if (amount === 0) {
+      void enroll(selectedOffer === "classes");
+      return;
+    }
+    setCheckoutOpen(true);
+    setPaymentResult(null);
+  }
+
+  function isChapterBookmarked(chapterId: number) {
+    return bookmarkOverrides[chapterId]
+      ?? notes.some((note) => note.chapitreId === chapterId && !note.ressourceId && note.signet);
+  }
+
+  async function toggleChapterBookmark(chapterId: number) {
+    if (bookmarkRequests.current.has(chapterId)) return;
+    bookmarkRequests.current.add(chapterId);
+    const previous = notes;
+    const existing = notes.find((note) => note.chapitreId === chapterId && !note.ressourceId && note.signet);
+    const adding = !existing;
+    let confirmed: boolean | undefined;
+    setBookmarkOverrides((current) => ({...current, [chapterId]: adding}));
+    setBusy(`bookmark-${chapterId}`);
+    setError("");
+    try {
+      if (adding) {
+        const saved = await api<PrivateNote>(`/participant/formations/${id}/notes`, {
+          method: "POST",
+          body: JSON.stringify({chapitreId: chapterId, contenu: null, signet: true}),
+        });
+        setNotes((current) => current.some((note) => note.id === saved.id) ? current : [saved, ...current]);
+        confirmed = true;
+        setNotice("Signet privé ajouté.");
+      } else if (existing.contenu) {
+        const updated = await api<PrivateNote>(`/participant/notes/${existing.id}`, {
+          method: "PUT",
+          body: JSON.stringify({chapitreId: chapterId, contenu: existing.contenu, signet: false}),
+        });
+        setNotes((current) => current.map((note) => note.id === updated.id ? updated : note));
+        confirmed = false;
+        setNotice("Signet retiré.");
+      } else {
+        await api(`/participant/notes/${existing.id}`, {method: "DELETE"});
+        setNotes((current) => current.filter((note) => note.id !== existing.id));
+        confirmed = false;
+        setNotice("Signet retiré.");
+      }
+    } catch (reason) {
+      setNotes(previous);
+      setError((reason as Error).message);
+    } finally {
+      bookmarkRequests.current.delete(chapterId);
+      setBookmarkOverrides((current) => {
+        if (confirmed !== undefined) return {...current, [chapterId]: confirmed};
+        const next = {...current};
+        delete next[chapterId];
+        return next;
+      });
       setBusy("");
     }
   }
@@ -294,7 +381,7 @@ export default function CourseDetail() {
             name: course.titre,
             description: course.description,
             inLanguage: course.langue,
-            provider: {"@type": "Organization", name: "NexaLearn"},
+            provider: {"@type": "Organization", name: "Khotwa"},
             offers: [
               {"@type": "Offer", name: "Contenu", price: course.prix, priceCurrency: "MAD"},
               ...(course.classesDisponibles ? [{
@@ -327,8 +414,11 @@ export default function CourseDetail() {
               <span><Star size={18} /> {reviews.nombre ? `${reviews.moyenne}/5 · ${reviews.nombre} avis` : "Aucun avis publié"}</span>
             </div>
             <div className="price">{course.prix === 0 ? "Gratuite" : `${course.prix} ${course.devise}`}</div>
-            <FavoriteButton formationId={id} />
-            <Button type="button" variant="ghost" onClick={shareCourse}><Share2 size={17} /> Partager la formation</Button>
+            <div className="course-actions" aria-label="Actions de la formation">
+              <div className="action-group action-group-secondary">
+                <FavoriteButton formationId={id} />
+                <Button type="button" variant="ghost" onClick={shareCourse}><Share2 size={17} /> Partager</Button>
+              </div>
             {!course.inscrit ? (
               <div className="purchase-panel">
                 <fieldset className="offer-selector" aria-describedby="purchase-note">
@@ -360,19 +450,19 @@ export default function CourseDetail() {
                 </fieldset>
                 <Button
                   loading={busy === (selectedOffer === "classes" ? "classes" : "content")}
-                  onClick={() => enroll(selectedOffer === "classes")}
+                  onClick={startPurchase}
                 >
                   {selectedOffer === "classes" && <UsersRound size={18} />}
-                  {course.prix === 0 && selectedOffer === "content" ? "S’inscrire gratuitement" : "Confirmer l’inscription simulée"}
+                  {(selectedOffer === "classes" ? course.prixAvecClasses : course.prix) === 0 ? "S’inscrire gratuitement" : "Continuer vers le paiement"}
                 </Button>
                 <p className="purchase-note" id="purchase-note">
-                  Paiement simulé pour ce MVP : aucune donnée bancaire n’est demandée. Le montant affiché vient du serveur.
+                  Paiement simulé pour ce MVP : les données du formulaire ne sont jamais transmises. Le montant affiché vient du serveur.
                 </p>
               </div>
             ) : (
-              <div className="row">
+              <div className="action-group action-group-primary">
                 <Link className="button-link" href={`/apprentissage/${id}`}><Route size={17} /> Ouvrir le lecteur</Link>
-                <Link className="button-link" href={`/apprentissage/${id}/quiz`}>Passer les QCM</Link>
+                <Link className="button-link secondary" href={`/apprentissage/${id}/quiz`}>Passer les QCM</Link>
                 {course.typeAcces === "CONTENU" && course.classesDisponibles && (
                   <Button variant="secondary" loading={busy === "upgrade"} onClick={upgradeClasses}>
                     <UsersRound size={18} /> Ajouter les classes
@@ -381,10 +471,12 @@ export default function CourseDetail() {
                 )}
               </div>
             )}
+            </div>
           </div>
           <div className="course-side">
             {course.imageUrl ? (
               <Image
+                unoptimized
                 width={600}
                 height={375}
                 sizes="(max-width: 900px) calc(100vw - 40px), 420px"
@@ -397,6 +489,28 @@ export default function CourseDetail() {
             )}
           </div>
         </section>
+
+        {checkoutOpen && <CourseCheckout
+          open={checkoutOpen}
+          courseTitle={course.titre}
+          trainer={course.formateur}
+          withClasses={selectedOffer === "classes"}
+          amount={selectedOffer === "classes" ? course.prixAvecClasses : course.prix}
+          currency={course.devise}
+          busy={busy === (selectedOffer === "classes" ? "classes" : "content")}
+          onClose={() => setCheckoutOpen(false)}
+          onConfirm={() => enroll(selectedOffer === "classes", true)}
+        />}
+
+        {paymentResult && <PaymentResultModal
+          result={paymentResult}
+          courseTitle={course.titre}
+          amount={selectedOffer === "classes" ? course.prixAvecClasses : course.prix}
+          currency={course.devise}
+          onClose={() => setPaymentResult(null)}
+          onContinue={() => {setPaymentResult(null);router.push(`/apprentissage/${id}`)}}
+          onRetry={() => {setPaymentResult(null);setCheckoutOpen(true)}}
+        />}
 
         <section className="surface-card course-knowledge-path" aria-labelledby="course-path-title">
           <div><span className="eyebrow">Le parcours de connaissance</span><h2 id="course-path-title">De la découverte à la maîtrise</h2><p>Les étapes avancent uniquement avec votre progression réelle.</p></div>
@@ -465,12 +579,15 @@ export default function CourseDetail() {
                             <BookOpen size={15} /> Note privée
                           </Button>
                           <Button
+                            type="button"
                             size="sm"
                             variant="ghost"
-                            loading={busy === `note-${chapter.id}`}
-                            onClick={() => saveNote(chapter.id, true)}
+                            aria-pressed={isChapterBookmarked(chapter.id)}
+                            loading={busy === `bookmark-${chapter.id}`}
+                            disabled={busy === `bookmark-${chapter.id}`}
+                            onClick={() => toggleChapterBookmark(chapter.id)}
                           >
-                            <Bookmark size={15} /> Placer un signet
+                            <Bookmark size={15} /> {isChapterBookmarked(chapter.id) ? "Retirer le signet" : "Placer un signet"}
                           </Button>
                           {noteChapter === chapter.id && (
                             <div className="inline-note">
@@ -487,7 +604,7 @@ export default function CourseDetail() {
                                 size="sm"
                                 disabled={!noteDraft.trim()}
                                 loading={busy === `note-${chapter.id}`}
-                                onClick={() => saveNote(chapter.id, false)}
+                                onClick={() => saveNote(chapter.id)}
                               >
                                 Enregistrer la note
                               </Button>

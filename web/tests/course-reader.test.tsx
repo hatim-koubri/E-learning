@@ -1,4 +1,4 @@
-import {render, screen, waitFor} from "@testing-library/react";
+import {fireEvent, render, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import LearningReaderPage from "@/app/apprentissage/[formationId]/page";
@@ -114,7 +114,8 @@ describe("lecteur de cours", () => {
     installApi((path, options) => {
       if (path === "/participant/formations/7/notes" && options?.method === "POST") {
         const body = JSON.parse(String(options.body));
-        note = {id: 9, formationId: 7, formationTitre: journey.titre, chapitreId: 10, chapitreTitre: "Principes", ressourceId: 101, ressourceTitre: "Guide PDF", contenu: body.contenu ?? undefined, signet: body.signet, createdAt: "2026-08-01", updatedAt: "2026-08-01"};
+        if (body.contenu) savedContent = body.contenu;
+        note = {id: body.contenu ? 10 : 9, formationId: 7, formationTitre: journey.titre, chapitreId: 10, chapitreTitre: "Principes", ressourceId: 101, ressourceTitre: "Guide PDF", contenu: body.contenu ?? undefined, signet: body.signet, createdAt: "2026-08-01", updatedAt: "2026-08-01"};
         return note;
       }
       if (path === "/participant/notes/9" && options?.method === "PUT") {
@@ -136,6 +137,38 @@ describe("lecteur de cours", () => {
     expect(savedContent).toBe("À retenir");
   });
 
+  it("bloque le double clic sur le signet pendant la requête", async () => {
+    let resolveRequest: ((value: PrivateNote) => void) | undefined;
+    let calls = 0;
+    installApi((path, options) => {
+      if (path === "/participant/formations/7/notes" && options?.method === "POST") {
+        calls += 1;
+        return new Promise<PrivateNote>((resolve) => { resolveRequest = resolve; });
+      }
+    });
+    const user = userEvent.setup();
+    render(<LearningReaderPage />);
+    await screen.findByRole("heading", {name: "Guide PDF"});
+    await user.dblClick(screen.getByRole("button", {name: "Ajouter un signet"}));
+    expect(calls).toBe(1);
+    resolveRequest?.({id: 9, formationId: 7, formationTitre: journey.titre, chapitreId: 10, chapitreTitre: "Principes", ressourceId: 101, ressourceTitre: "Guide PDF", signet: true, createdAt: "2026-08-01", updatedAt: "2026-08-01"});
+    expect(await screen.findByRole("button", {name: "Retirer le signet"})).toBeInTheDocument();
+  });
+
+  it("restaure l’état du signet lorsque la création échoue", async () => {
+    installApi((path, options) => {
+      if (path === "/participant/formations/7/notes" && options?.method === "POST") {
+        return Promise.reject(new Error("Signet refusé"));
+      }
+    });
+    const user = userEvent.setup();
+    render(<LearningReaderPage />);
+    await screen.findByRole("heading", {name: "Guide PDF"});
+    await user.click(screen.getByRole("button", {name: "Ajouter un signet"}));
+    expect(await screen.findByText("Signet refusé")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Ajouter un signet"})).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("replie le plan sur mobile et distingue une vidéo uploadée", async () => {
     const videoJourney: LearningJourney = {...journey, modules: [{id: 2, titre: "Pratique", etat: "DISPONIBLE", progression: 0, chapitres: [{id: 20, titre: "Atelier", etat: "DISPONIBLE", progression: 0, ressources: [{id: 201, titre: "Démonstration uploadée", type: "VIDEO", etat: "DISPONIBLE"}]}]}]};
     Object.defineProperty(window, "matchMedia", {configurable: true, value: vi.fn(() => ({matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn()}))});
@@ -149,6 +182,9 @@ describe("lecteur de cours", () => {
     expect(screen.getByRole("slider", {name: "Position de lecture"})).toBeInTheDocument();
     expect(screen.getByRole("slider", {name: "Volume"})).toBeInTheDocument();
     expect(screen.getByRole("button", {name: "Afficher en plein écran"})).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Terminez la vidéo"})).toBeDisabled();
+    fireEvent.ended(document.querySelector("video")!);
+    expect(screen.getByRole("button", {name: "Marquer comme terminé"})).toBeEnabled();
     expect(screen.getByRole("button", {name: "Précédent : début du cours"})).toBeDisabled();
     expect(screen.getByRole("button", {name: "Suivant : fin du cours"})).toBeDisabled();
     expect(screen.queryByRole("link", {name: /Regarder sur YouTube/})).not.toBeInTheDocument();

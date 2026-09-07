@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Award,
   BookOpen,
   CalendarDays,
   CheckCircle2,
@@ -17,7 +16,6 @@ import {useEffect, useState} from "react";
 import {CourseCard} from "@/components/CourseCard";
 import {Footer} from "@/components/Footer";
 import {GuestOnly} from "@/components/GuestOnly";
-import {KnowledgePath} from "@/components/KnowledgePath";
 import {MagneticLink} from "@/components/MagneticLink";
 import {MotionObserver} from "@/components/MotionObserver";
 import {PublicHeader} from "@/components/PublicHeader";
@@ -63,7 +61,7 @@ export default function Home() {
               <span className="eyebrow">Apprendre avec une direction claire</span>
               <h1>Développez vos compétences, <em>à votre rythme.</em></h1>
               <p>
-                NexaLearn réunit cours structurés, évaluations et classes virtuelles pour vous
+                Khotwa réunit cours structurés, évaluations et classes virtuelles pour vous
                 aider à passer de la découverte à la maîtrise.
               </p>
               <div className="hero-actions">
@@ -80,54 +78,35 @@ export default function Home() {
             </div>
             <div
               className="hero-visual hero-learning-preview"
-              aria-label="Aperçu illustratif de l’espace d’apprentissage"
+              aria-label="Présentation publique de la plateforme Khotwa"
             >
               <div className="hero-preview-card">
                 <header className="visual-title">
                   <div>
-                    <span className="preview-kicker">Aperçu illustratif</span>
-                    <strong>Mon apprentissage</strong>
-                    <small>Une vue claire de la prochaine étape</small>
+                    <span className="preview-kicker">La plateforme en un regard</span>
+                    <strong>Comment apprend-on sur Khotwa&nbsp;?</strong>
+                    <small>Découvrez les outils disponibles avant de créer votre compte.</small>
                   </div>
-                  <span className="live-chip" aria-label="Exemple de statut : classe en direct">
-                    <span className="live-dot" aria-hidden="true" />
-                    Classe en direct
+                  <span className="platform-chip">
+                    <GraduationCap aria-hidden="true" size={16} />
+                    E-learning
                   </span>
                 </header>
 
-                <section className="visual-course" aria-label="Exemple de parcours actif à 68 pour cent">
-                  <div className="visual-cover" aria-hidden="true"><BookOpen size={28} /></div>
-                  <div className="visual-course-copy">
-                    <div className="visual-progress-heading">
-                      <span className="eyebrow">Parcours actif</span>
-                      <strong>68&nbsp;%</strong>
-                    </div>
-                    <h2>Construire des compétences durables</h2>
-                    <progress
-                      className="progress-track"
-                      value={68}
-                      max={100}
-                      aria-label="Progression illustrative du parcours"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={68}
-                    />
-                    <small>Donnée de démonstration</small>
-                  </div>
+                <section className="visual-public-intro">
+                  <span className="visual-cover" aria-hidden="true"><BookOpen size={28} /></span>
+                  <div><span className="eyebrow">Une méthode lisible</span><h2>Du premier cours à l’échange en direct</h2><p>Chaque outil correspond à une étape concrète de l’apprentissage.</p></div>
                 </section>
 
-                <div className="visual-module-list" aria-label="Exemples d’actions disponibles">
-                  <div><CirclePlay size={18} /> <span>Reprendre le dernier chapitre</span></div>
-                  <div><ClipboardCheck size={18} /> <span>Préparer le prochain QCM</span></div>
-                  <div><UsersRound size={18} /> <span>Rejoindre votre classe</span></div>
+                <div className="visual-module-list" aria-label="Fonctionnalités de la plateforme">
+                  <div><BookOpen size={18} /><span><strong>Explorer</strong><small>Consultez le catalogue et les aperçus gratuits.</small></span></div>
+                  <div><ClipboardCheck size={18} /><span><strong>Apprendre</strong><small>Suivez des modules structurés et évaluez vos acquis.</small></span></div>
+                  <div><UsersRound size={18} /><span><strong>Participer</strong><small>Rejoignez les classes auxquelles vous serez affecté.</small></span></div>
                 </div>
 
-                <div className="visual-journey">
-                  <div>
-                    <span className="eyebrow">Le voyage de la connaissance</span>
-                    <Award aria-hidden="true" size={20} />
-                  </div>
-                  <KnowledgePath active={2} compact label="Exemple du parcours de connaissance" />
+                <div className="visual-public-note">
+                  <CheckCircle2 aria-hidden="true" size={20} />
+                  <p><strong>Votre progression commence après l’inscription.</strong><span>Aucune donnée personnelle n’est affichée sur cette page publique.</span></p>
                 </div>
               </div>
             </div>

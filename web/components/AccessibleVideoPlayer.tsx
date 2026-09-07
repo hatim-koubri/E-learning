@@ -15,11 +15,13 @@ export function AccessibleVideoPlayer({
   title,
   onError,
   onProgress,
+  onEnded,
 }: {
   src: string;
   title: string;
   onError: () => void;
   onProgress: (seconds: number) => void;
+  onEnded?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -127,7 +129,11 @@ export function AccessibleVideoPlayer({
         onWaiting={() => setBuffering(true)}
         onPlaying={() => {setPlaying(true);setBuffering(false);}}
         onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        onEnded={(event) => {
+          setPlaying(false);
+          onProgress(Math.floor(event.currentTarget.duration || event.currentTarget.currentTime));
+          onEnded?.();
+        }}
         onError={onError}
         onTimeUpdate={(event) => {
           const seconds = event.currentTarget.currentTime;

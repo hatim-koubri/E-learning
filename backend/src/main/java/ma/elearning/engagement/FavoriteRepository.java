@@ -12,4 +12,5 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     @EntityGraph(attributePaths = {"formation", "formation.formateur"})
     List<Favorite> findByParticipantEmailOrderByCreatedAtDesc(String email);
     long countByParticipantEmail(String email);
+    long deleteByParticipantId(Long participantId);
 }

@@ -119,18 +119,14 @@ class ParticipantModuleVisibilityIntegrationTest {
         mvc.perform(get("/api/catalogue/" + formationId)
                         .header("Authorization", bearer(participant)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modules[3].id").value(createdId))
-                .andExpect(jsonPath("$.modules[3].titre").value(title))
-                .andExpect(jsonPath("$.modules[3].ordre").value(3))
-                .andExpect(jsonPath("$.modules[3].verrouille").value(false))
-                .andExpect(jsonPath("$.modules[3].chapitres").isEmpty());
+                .andExpect(jsonPath("$.modules.length()").value(2))
+                .andExpect(jsonPath("$.modules[?(@.id == %s)]".formatted(createdId)).isEmpty());
 
         mvc.perform(get("/api/participant/formations/" + formationId + "/parcours")
                         .header("Authorization", bearer(participant)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modules[3].id").value(createdId))
-                .andExpect(jsonPath("$.modules[3].titre").value(title))
-                .andExpect(jsonPath("$.modules[3].chapitres").isEmpty());
+                .andExpect(jsonPath("$.modules.length()").value(2))
+                .andExpect(jsonPath("$.modules[?(@.id == %s)]".formatted(createdId)).isEmpty());
     }
 
     @Test
@@ -140,9 +136,9 @@ class ParticipantModuleVisibilityIntegrationTest {
                 new ReorderRequest(List.of(emptyModuleId, previewModuleId, lockedModuleId)));
 
         var detail = learning.detail(formationId, participant.getEmail());
-        assertEquals(List.of(emptyModuleId, previewModuleId, lockedModuleId),
+        assertEquals(List.of(previewModuleId, lockedModuleId),
                 detail.modules().stream().map(LearningDtos.PublicModule::id).toList());
-        assertEquals(List.of(0, 1, 2),
+        assertEquals(List.of(0, 1),
                 detail.modules().stream().map(LearningDtos.PublicModule::ordre).toList());
     }
 

@@ -1,0 +1,12 @@
+import {fireEvent,render,screen,waitFor} from "@testing-library/react";
+import {beforeEach,expect,test,vi} from "vitest";
+import OrientationPage from "@/app/orientation/page";
+
+const api=vi.fn();vi.mock("@/lib/api",()=>({api:(...args:unknown[])=>api(...args),currentUser:()=>null,ApiRequestError:class extends Error{}}));
+vi.mock("@/components/PublicHeader",()=>({PublicHeader:()=>null}));vi.mock("@/components/Footer",()=>({Footer:()=>null}));
+const conversation={id:7,sessionId:"visitor-session-123456",titre:"Nouvelle orientation",statut:"ACTIVE",profil:{competences:[]},messages:[],recommandations:[],createdAt:"2026-08-14",updatedAt:"2026-08-14"};
+beforeEach(()=>{api.mockReset();api.mockResolvedValue(conversation);localStorage.clear()});
+test("starts a natural conversation and prevents a second send while pending",async()=>{let resolveMessage:(value:unknown)=>void=()=>{};api.mockImplementationOnce(async()=>conversation).mockImplementationOnce(()=>new Promise(resolve=>{resolveMessage=resolve}));render(<OrientationPage/>);await screen.findByText("Bonjour, quel projet avez-vous en tête ?");
+  const input=screen.getByLabelText("Votre message");fireEvent.change(input,{target:{value:"Quelle différence entre Java et JavaScript ?"}});fireEvent.click(screen.getByRole("button",{name:/Envoyer/}));expect(api).toHaveBeenCalledTimes(2);expect(screen.getByRole("button",{name:/Envoyer/})).toBeDisabled();fireEvent.click(screen.getByRole("button",{name:/Envoyer/}));expect(api).toHaveBeenCalledTimes(2);
+  resolveMessage({message:{id:2,role:"ASSISTANT",contenu:"Java et JavaScript sont différents.",statut:"COMPLETE",createdAt:"2026-08-14"},recommandations:[],profil:{competences:[]}});await waitFor(()=>expect(screen.getByText("Java et JavaScript sont différents.")).toBeInTheDocument());});
+test("renders real recommendation fields and safe catalogue link",async()=>{api.mockResolvedValueOnce({...conversation,messages:[{id:1,role:"ASSISTANT",contenu:"Voici une option.",statut:"COMPLETE",createdAt:"2026-08-14"}],recommandations:[{formationId:42,titre:"Java réel",categorie:"Dev",formateur:"Sara",niveau:"DEBUTANT",langue:"fr",prix:500,classesDisponibles:false,score:85,rang:1,raisons:["Budget adapté"],modules:["Base"],href:"/catalogue/42"}]});render(<OrientationPage/>);expect(await screen.findByText("Java réel")).toBeInTheDocument();expect(screen.getByRole("link",{name:"Voir la formation"})).toHaveAttribute("href","/catalogue/42");expect(screen.getByText("85")).toBeInTheDocument();});

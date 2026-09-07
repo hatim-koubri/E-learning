@@ -3,37 +3,31 @@
 import Link from "next/link";
 import {
   ArrowLeft,
-  BookOpen,
   Bookmark,
-  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
   ExternalLink,
-  FileImage,
-  FileText,
   Focus,
   ListTree,
-  LockKeyhole,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
-  PlaySquare,
   Save,
-  Video,
   X,
 } from "lucide-react";
 import {useParams} from "next/navigation";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {LearningResourceViewer} from "@/components/LearningResourceViewer";
+import {LearningCourseOutline, LearningResourceIcon} from "@/components/LearningCourseOutline";
 import {Protected} from "@/components/Protected";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import {Alert, Button, EmptyState, ErrorState, IconButton, ProgressBar, Skeleton, Toast, cn} from "@/components/ui";
-import {api} from "@/lib/api";
+import {api, apiBlob} from "@/lib/api";
 import type {LearningJourney, PrivateNote} from "@/lib/engagement";
 import {formatBytes, type ResourceType} from "@/lib/formations";
-import type {ProgressResponse, ResourceAccess} from "@/lib/learning";
+import type {EvaluationPlan, ProgressResponse, ResourceAccess} from "@/lib/learning";
 
 type JourneyResource = LearningJourney["modules"][number]["chapitres"][number]["ressources"][number];
 type ReaderItem = {
@@ -65,26 +59,15 @@ function resourceLabel(type: ResourceType) {
   return "Image pédagogique";
 }
 
-function ResourceIcon({type}: {type: ResourceType}) {
-  if (type === "PDF") return <FileText aria-hidden="true" size={17} />;
-  if (type === "VIDEO") return <Video aria-hidden="true" size={17} />;
-  if (type === "YOUTUBE") return <PlaySquare aria-hidden="true" size={17} />;
-  return <FileImage aria-hidden="true" size={17} />;
-}
-
-function StatusIcon({state}: {state: string}) {
-  if (state === "TERMINE") return <Check aria-label="Terminé" size={15} />;
-  if (state === "VERROUILLE") return <LockKeyhole aria-label="Verrouillé" size={15} />;
-  return <BookOpen aria-label="Disponible" size={15} />;
-}
-
 export default function LearningReaderPage() {
   const {formationId} = useParams<{formationId: string}>();
   const [journey, setJourney] = useState<LearningJourney | null>(null);
+  const [evaluations, setEvaluations] = useState<EvaluationPlan | null>(null);
   const [notes, setNotes] = useState<PrivateNote[]>([]);
   const [activeResourceId, setActiveResourceId] = useState<number | null>(null);
   const [access, setAccess] = useState<ResourceAccess | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [bookmarkOverride, setBookmarkOverride] = useState<boolean | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [resourceLoading, setResourceLoading] = useState(false);
   const [pageError, setPageError] = useState("");
@@ -94,8 +77,10 @@ export default function LearningReaderPage() {
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [narrow, setNarrow] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
+  const [videoFinished, setVideoFinished] = useState(false);
   const videoSeconds = useRef(0);
   const accessRequest = useRef(0);
+  const bookmarkRequest = useRef(false);
   const outlineRef = useRef<HTMLElement>(null);
 
   const requestAccess = useCallback(async (resourceId: number) => {
@@ -117,11 +102,13 @@ export default function LearningReaderPage() {
     setPageLoading(true);
     setPageError("");
     try {
-      const [journeyResponse, noteResponse] = await Promise.all([
+      const [journeyResponse, noteResponse, evaluationResponse] = await Promise.all([
         api<LearningJourney>(`/participant/formations/${formationId}/parcours`),
         api<PrivateNote[]>(`/participant/notes?formationId=${formationId}`),
+        api<EvaluationPlan>(`/participant/formations/${formationId}/evaluations`),
       ]);
       setJourney(journeyResponse);
+      setEvaluations(evaluationResponse);
       setNotes(noteResponse);
       const resources = flattenJourney(journeyResponse);
       const query = new URLSearchParams(window.location.search);
@@ -195,14 +182,19 @@ export default function LearningReaderPage() {
   const selected = currentIndex >= 0 ? resources[currentIndex] : null;
   const previous = currentIndex > 0 ? resources[currentIndex - 1] : null;
   const next = currentIndex >= 0 && currentIndex + 1 < resources.length ? resources[currentIndex + 1] : null;
-  const activeNote = notes.find((note) => note.ressourceId === activeResourceId);
+  const activeNotes = notes.filter((note) => note.ressourceId === activeResourceId);
+  const activeBookmark = activeNotes.find((note) => note.signet);
+  const editableNote = activeNotes.find((note) => Boolean(note.contenu));
+  const bookmarked = bookmarkOverride ?? Boolean(activeBookmark);
 
   function choose(item: ReaderItem | null) {
     if (!item || item.resource.etat === "VERROUILLE") return;
     setActiveResourceId(item.resource.id);
-    setNoteDraft(notes.find((note) => note.ressourceId === item.resource.id)?.contenu ?? "");
+    setNoteDraft(notes.find((note) => note.ressourceId === item.resource.id && note.contenu)?.contenu ?? "");
+    setBookmarkOverride(null);
     setNotice("");
     videoSeconds.current = 0;
+    setVideoFinished(false);
     window.history.replaceState(null, "", `/apprentissage/${formationId}?ressource=${item.resource.id}`);
     void requestAccess(item.resource.id);
     if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches) setOutlineOpen(false);
@@ -218,13 +210,25 @@ export default function LearningReaderPage() {
         body: JSON.stringify({termine: true, positionVideoSecondes: videoSeconds.current}),
       });
       const refreshed = await api<LearningJourney>(`/participant/formations/${formationId}/parcours`);
+      const refreshedEvaluations = await api<EvaluationPlan>(`/participant/formations/${formationId}/evaluations`);
       setJourney(refreshed);
+      setEvaluations(refreshedEvaluations);
       setNotice(`Chapitre terminé. Votre progression atteint ${Math.round(response.pourcentage)} %.`);
     } catch (reason) {
       setResourceError((reason as Error).message);
     } finally {
       setBusy("");
     }
+  }
+
+  async function downloadCertificate(){
+    setBusy("certificate");setResourceError("");
+    try{
+      const blob=await apiBlob(`/participant/formations/${formationId}/certificat`);
+      const url=URL.createObjectURL(blob);const anchor=document.createElement("a");
+      anchor.href=url;anchor.download=`certificat-khotwa-${formationId}.pdf`;anchor.click();URL.revokeObjectURL(url);
+      setNotice("Votre certificat a été téléchargé.");
+    }catch(reason){setResourceError((reason as Error).message)}finally{setBusy("")}
   }
 
   function mergeNote(updated: PrivateNote) {
@@ -237,13 +241,13 @@ export default function LearningReaderPage() {
     if (!selected || !noteDraft.trim()) return;
     setBusy("note");
     try {
-      const updated = await api<PrivateNote>(activeNote ? `/participant/notes/${activeNote.id}` : `/participant/formations/${formationId}/notes`, {
-        method: activeNote ? "PUT" : "POST",
+      const updated = await api<PrivateNote>(editableNote ? `/participant/notes/${editableNote.id}` : `/participant/formations/${formationId}/notes`, {
+        method: editableNote ? "PUT" : "POST",
         body: JSON.stringify({
           chapitreId: selected.chapterId,
           ressourceId: selected.resource.id,
           contenu: noteDraft.trim(),
-          signet: activeNote?.signet ?? false,
+          signet: editableNote?.signet ?? false,
         }),
       });
       mergeNote(updated);
@@ -256,23 +260,48 @@ export default function LearningReaderPage() {
   }
 
   async function toggleBookmark() {
-    if (!selected) return;
+    if (!selected || bookmarkRequest.current) return;
+    bookmarkRequest.current = true;
+    const previous = notes;
+    const adding = !Boolean(activeBookmark);
+    setBookmarkOverride(adding);
     setBusy("bookmark");
     try {
-      const updated = await api<PrivateNote>(activeNote ? `/participant/notes/${activeNote.id}` : `/participant/formations/${formationId}/notes`, {
-        method: activeNote ? "PUT" : "POST",
-        body: JSON.stringify({
-          chapitreId: selected.chapterId,
-          ressourceId: selected.resource.id,
-          contenu: activeNote?.contenu ?? null,
-          signet: !activeNote?.signet,
-        }),
-      });
-      mergeNote(updated);
-      setNotice(updated.signet ? "Signet privé ajouté." : "Signet retiré.");
+      if (adding) {
+        const updated = await api<PrivateNote>(`/participant/formations/${formationId}/notes`, {
+          method: "POST",
+          body: JSON.stringify({
+            chapitreId: selected.chapterId,
+            ressourceId: selected.resource.id,
+            contenu: null,
+            signet: true,
+          }),
+        });
+        mergeNote(updated);
+        setNotice("Signet privé ajouté.");
+      } else if (activeBookmark?.contenu) {
+        const updated = await api<PrivateNote>(`/participant/notes/${activeBookmark.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            chapitreId: selected.chapterId,
+            ressourceId: selected.resource.id,
+            contenu: activeBookmark.contenu,
+            signet: false,
+          }),
+        });
+        mergeNote(updated);
+        setNotice("Signet retiré.");
+      } else if (activeBookmark) {
+        await api(`/participant/notes/${activeBookmark.id}`, {method: "DELETE"});
+        setNotes((current) => current.filter((note) => note.id !== activeBookmark.id));
+        setNotice("Signet retiré.");
+      }
     } catch (reason) {
+      setNotes(previous);
       setResourceError((reason as Error).message);
     } finally {
+      setBookmarkOverride(null);
+      bookmarkRequest.current = false;
       setBusy("");
     }
   }
@@ -293,13 +322,13 @@ export default function LearningReaderPage() {
           </div>
           <div className="reader-topbar-actions">
             <IconButton
-              label={activeNote?.signet ? "Retirer le signet" : "Ajouter un signet"}
-              aria-pressed={Boolean(activeNote?.signet)}
+              label={bookmarked ? "Retirer le signet" : "Ajouter un signet"}
+              aria-pressed={bookmarked}
               aria-busy={busy === "bookmark" || undefined}
               disabled={!selected || busy === "bookmark"}
               onClick={toggleBookmark}
             >
-              <Bookmark className={activeNote?.signet ? "filled-icon" : undefined} size={19} />
+              <Bookmark className={bookmarked ? "filled-icon" : undefined} size={19} />
             </IconButton>
             <IconButton label={readingMode ? "Quitter le mode lecture" : "Activer le mode lecture"} aria-pressed={readingMode} onClick={() => setReadingMode((current) => !current)}>
               {readingMode ? <X size={19} /> : <Focus size={19} />}
@@ -323,38 +352,15 @@ export default function LearningReaderPage() {
               <div><ListTree size={19} /><strong>Plan du cours</strong></div>
               <IconButton label="Replier le plan" onClick={() => setOutlineOpen(false)}><ChevronLeft size={18} /></IconButton>
             </div>
-            <nav>
-              {journey?.modules.map((module, moduleIndex) => (
-                <details className="reader-module" open={module.chapitres.some((chapter) => chapter.ressources.some((resource) => resource.id === activeResourceId)) || moduleIndex === 0 || undefined} key={module.id}>
-                  <summary>
-                    <span>{String(moduleIndex + 1).padStart(2, "0")}</span>
-                    <strong>{module.titre}</strong>
-                    <StatusIcon state={module.etat} />
-                  </summary>
-                  {module.chapitres.length === 0 && <p className="reader-outline-empty">Aucun chapitre disponible</p>}
-                  {module.chapitres.map((chapter) => (
-                    <section className="reader-chapter" key={chapter.id}>
-                      <div className="reader-chapter-title"><StatusIcon state={chapter.etat} /><strong>{chapter.titre}</strong></div>
-                      {chapter.ressources.length === 0 && <p className="reader-outline-empty">Aucune ressource</p>}
-                      {chapter.ressources.map((resource) => (
-                        <button
-                          type="button"
-                          className={cn("reader-resource-link", resource.id === activeResourceId && "active")}
-                          aria-current={resource.id === activeResourceId ? "page" : undefined}
-                          disabled={resource.etat === "VERROUILLE"}
-                          onClick={() => choose({moduleId: module.id, moduleTitle: module.titre, chapterId: chapter.id, chapterTitle: chapter.titre, chapterState: chapter.etat, resource})}
-                          key={resource.id}
-                        >
-                          <ResourceIcon type={resource.type} />
-                          <span>{resource.titre}</span>
-                          <StatusIcon state={resource.etat} />
-                        </button>
-                      ))}
-                    </section>
-                  ))}
-                </details>
-              ))}
-            </nav>
+            <LearningCourseOutline
+              formationId={formationId}
+              journey={journey}
+              evaluations={evaluations}
+              activeResourceId={activeResourceId}
+              certificateBusy={busy==="certificate"}
+              onDownloadCertificate={downloadCertificate}
+              onSelectResource={(module,chapter,resource)=>choose({moduleId:module.id,moduleTitle:module.titre,chapterId:chapter.id,chapterTitle:chapter.titre,chapterState:chapter.etat,resource})}
+            />
           </aside>
 
           <main className="reader-main" id="contenu-principal" aria-hidden={narrow && outlineOpen || undefined} inert={narrow && outlineOpen}>
@@ -371,7 +377,7 @@ export default function LearningReaderPage() {
               <div className="reader-resource-transition" key={selected.resource.id}>
                 <header className="reader-resource-header">
                   <div>
-                    <span className="resource-kicker"><ResourceIcon type={selected.resource.type} /> {resourceLabel(selected.resource.type)}</span>
+                    <span className="resource-kicker"><LearningResourceIcon type={selected.resource.type} /> {resourceLabel(selected.resource.type)}</span>
                     <h1>{selected.resource.titre}</h1>
                     <p>{selected.moduleTitle} <span aria-hidden="true">•</span> {selected.chapterTitle}</p>
                     {access && (
@@ -404,6 +410,7 @@ export default function LearningReaderPage() {
                     title={selected.resource.titre}
                     onRetry={() => requestAccess(selected.resource.id)}
                     onVideoProgress={(seconds) => {videoSeconds.current = seconds;}}
+                    onVideoEnded={() => setVideoFinished(true)}
                     key={access.url}
                   />
                 )}
@@ -411,7 +418,7 @@ export default function LearningReaderPage() {
                 <section className="reader-notes" aria-labelledby="reader-notes-title">
                   <div className="reader-notes-heading">
                     <div><NotebookPen size={20} /><div><h2 id="reader-notes-title">Notes personnelles</h2><p>Privées et visibles uniquement par vous.</p></div></div>
-                    {activeNote?.updatedAt && <small>Enregistré le {new Date(activeNote.updatedAt).toLocaleDateString("fr-FR")}</small>}
+                    {editableNote?.updatedAt && <small>Enregistré le {new Date(editableNote.updatedAt).toLocaleDateString("fr-FR")}</small>}
                   </div>
                   <label>
                     <span className="sr-only">Ma note privée pour cette ressource</span>
@@ -433,11 +440,11 @@ export default function LearningReaderPage() {
             </Button>
             <Button
               className="reader-complete-action"
-              disabled={selected.chapterState === "TERMINE"}
+              disabled={selected.chapterState === "TERMINE" || selected.resource.type === "VIDEO" && !videoFinished}
               loading={busy === "complete"}
               onClick={completeChapter}
             >
-              <CheckCircle2 size={18} /> {selected.chapterState === "TERMINE" ? "Chapitre terminé" : "Marquer comme terminé"}
+              <CheckCircle2 size={18} /> {selected.chapterState === "TERMINE" ? "Chapitre terminé" : selected.resource.type === "VIDEO" && !videoFinished ? "Terminez la vidéo" : "Marquer comme terminé"}
             </Button>
             <Button aria-label={`Suivant : ${next?.resource.titre ?? "fin du cours"}`} variant="secondary" disabled={!next || next.resource.etat === "VERROUILLE"} onClick={() => choose(next)}>
               <span><small>Suivant</small>{next?.resource.titre ?? "Fin du cours"}</span><ChevronRight aria-hidden="true" size={18} />

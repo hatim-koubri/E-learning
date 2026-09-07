@@ -21,6 +21,8 @@ public class UserNotification {
     private String message;
     @Column(name = "action_url", length = 500)
     private String actionUrl;
+    @Column(name = "event_key", length = 190)
+    private String eventKey;
     @Column(nullable = false)
     private boolean lue;
     @CreationTimestamp @Column(name = "created_at", updatable = false)
@@ -37,6 +39,8 @@ public class UserNotification {
     public void setMessage(String value) { message = value; }
     public String getActionUrl() { return actionUrl; }
     public void setActionUrl(String value) { actionUrl = value; }
+    public String getEventKey() { return eventKey; }
+    public void setEventKey(String value) { eventKey = value; }
     public boolean isLue() { return lue; }
     public void setLue(boolean value) { lue = value; }
     public Instant getCreatedAt() { return createdAt; }

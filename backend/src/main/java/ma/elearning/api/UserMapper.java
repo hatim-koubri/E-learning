@@ -12,7 +12,8 @@ public final class UserMapper {
     }
     public static FormateurResponse toFormateurResponse(Formateur f) {
         return new FormateurResponse(f.getId(), f.getNom(), f.getEmail(), f.getTelephone(),
-                f.getStatut(), f.getMotifRefus(), f.getDateDecision(), f.getCreatedAt());
+                f.getStatut(), f.getDecisionResult(),
+                f.getDecisionAdmin() == null ? null : f.getDecisionAdmin().getId(),
+                f.getMotifRefus(), f.getDateDecision(), f.getCreatedAt(),f.getSpecialite(),f.getBiographie());
     }
 }
-

@@ -37,11 +37,13 @@ export function LearningResourceViewer({
   title,
   onRetry,
   onVideoProgress,
+  onVideoEnded,
 }: {
   access: ResourceAccess;
   title: string;
   onRetry: () => void;
   onVideoProgress: (seconds: number) => void;
+  onVideoEnded?: () => void;
 }) {
   const [mediaLoading, setMediaLoading] = useState(access.type === "IMAGE");
   const [mediaError, setMediaError] = useState(false);
@@ -63,7 +65,7 @@ export function LearningResourceViewer({
   }
 
   if (access.type === "VIDEO") {
-    return <AccessibleVideoPlayer src={access.url} title={title} onError={() => setMediaError(true)} onProgress={onVideoProgress} />;
+    return <AccessibleVideoPlayer src={access.url} title={title} onError={() => setMediaError(true)} onProgress={onVideoProgress} onEnded={onVideoEnded} />;
   }
 
   return (

@@ -15,7 +15,7 @@ describe("formulaires d'authentification",()=>{
   apiMock.mockResolvedValue({accessToken:"jwt",user:{id:1,nom:"A",email:"a@t",role:"ADMIN",statut:"ACTIF",createdAt:""}});
   const user=userEvent.setup();render(<LoginForm/>);await user.type(screen.getByLabelText("Email"),"a@t.com");await user.type(screen.getByLabelText("Mot de passe"),"Secret1!");
   await user.click(screen.getByRole("button",{name:"Se connecter"}));
-  await waitFor(()=>expect(saveSession).toHaveBeenCalled());expect(push).toHaveBeenCalledWith("/admin/formateurs");
+  await waitFor(()=>expect(saveSession).toHaveBeenCalled());expect(push).toHaveBeenCalledWith("/admin");
  });
  it("affiche une erreur de connexion",async()=>{
   apiMock.mockRejectedValue(new Error("Identifiants invalides"));const user=userEvent.setup();render(<LoginForm/>);
@@ -27,8 +27,16 @@ describe("formulaires d'authentification",()=>{
   await user.click(screen.getByRole("button",{name:"Créer mon compte"}));expect(await screen.findByText(/8 caract/)).toBeInTheDocument();expect(apiMock).not.toHaveBeenCalled();
  });
  it("inscrit un formateur avec confirmation",async()=>{
-  apiMock.mockResolvedValue({});const user=userEvent.setup();render(<RegisterForm kind="formateur"/>);await user.type(screen.getByLabelText("Nom"),"Ada");await user.type(screen.getByLabelText("Email"),"a@t.com");await user.type(screen.getByLabelText("Mot de passe"),"Strong1!");
-  await user.click(screen.getByRole("button",{name:"Envoyer la demande"}));expect(await screen.findByText(/administrateur/)).toBeInTheDocument();
+  apiMock.mockResolvedValue({});const user=userEvent.setup();render(<RegisterForm kind="formateur"/>);await user.type(screen.getByLabelText("Nom"),"Ada");await user.type(screen.getByLabelText("Email"),"a@t.com");await user.type(screen.getByLabelText("Spécialité"),"Java");await user.type(screen.getByLabelText("Présentation professionnelle"),"Expérience professionnelle en formation Java.");await user.type(screen.getByLabelText("Mot de passe"),"Strong1!");
+  await user.upload(screen.getByLabelText("Votre CV"),new File(["%PDF-1.4"],"cv.pdf",{type:"application/pdf"}));
+  await user.click(screen.getByRole("button",{name:"Envoyer la demande"}));await waitFor(()=>expect(apiMock).toHaveBeenCalledWith("/auth/register/formateur",expect.objectContaining({method:"POST",body:expect.any(FormData)})));expect(await screen.findByText(/Demande envoyée/)).toBeInTheDocument();
+ });
+ it("confirme honnêtement la création du compte participant",async()=>{
+  apiMock.mockResolvedValue({});const user=userEvent.setup();render(<RegisterForm kind="participant"/>);
+  await user.type(screen.getByLabelText("Nom"),"Ada");await user.type(screen.getByLabelText("Email"),"ada@example.test");
+  await user.type(screen.getByLabelText("Mot de passe"),"Strong1!");await user.click(screen.getByRole("button",{name:"Créer mon compte"}));
+  expect(await screen.findByText("Votre compte a été créé. Un email de bienvenue vous sera envoyé. Vous pouvez vous connecter.")).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith("/auth/register/participant",expect.objectContaining({method:"POST"}));
  });
  it("demande et confirme une réinitialisation",async()=>{
   apiMock.mockResolvedValueOnce({message:"Email envoyé"}).mockResolvedValueOnce({message:"Mot de passe modifié"});

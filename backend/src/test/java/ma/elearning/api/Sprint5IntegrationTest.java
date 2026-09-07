@@ -1,8 +1,10 @@
 package ma.elearning.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import ma.elearning.api.EngagementDtos.*;
 import ma.elearning.api.FormationDtos.*;
+import ma.elearning.admin.AdminReviewModerationService;
 import ma.elearning.common.BusinessException;
 import ma.elearning.engagement.*;
 import ma.elearning.formation.*;
@@ -10,6 +12,8 @@ import ma.elearning.learning.LearningService;
 import ma.elearning.security.JwtService;
 import ma.elearning.storage.ObjectStorage;
 import ma.elearning.user.*;
+import ma.elearning.virtualclass.SeanceVirtuelleRepository;
+import ma.elearning.virtualclass.VirtualClassService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -17,25 +21,43 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties =
+        "spring.datasource.url=jdbc:h2:mem:sprint5_integration;MODE=MySQL;DATABASE_TO_LOWER=TRUE")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class Sprint5IntegrationTest {
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
     @Autowired EngagementService engagement;
+    @Autowired AdminReviewModerationService moderation;
     @Autowired FormationService formationService;
     @Autowired LearningService learningService;
+    @Autowired VirtualClassService virtualClasses;
+    @Autowired SeanceVirtuelleRepository sessions;
     @Autowired UserRepository users;
+    @Autowired ParticipantPreferenceRepository preferences;
+    @Autowired FavoriteRepository favorites;
+    @Autowired LearningActivityRepository activities;
+    @Autowired PrivateNoteRepository notes;
+    @Autowired ReviewReportRepository reviewReports;
+    @Autowired ma.elearning.learning.InscriptionRepository inscriptions;
     @Autowired JwtService jwt;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -72,7 +94,14 @@ class Sprint5IntegrationTest {
                 new ModuleRequest("Pratique", "Deuxième étape", false)).id();
         secondChapter = formationService.addChapitre(trainer.getEmail(), secondModule,
                 new ChapitreRequest("Mettre en pratique", "Exercices")).id();
+        formationService.addYoutube(trainer.getEmail(), secondChapter,
+                new YoutubeRequest("Exercice guidé", "https://youtu.be/pratique-java"));
         formationService.changeStatus(trainer.getEmail(), formationId, FormationStatus.PUBLIEE);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -142,6 +171,22 @@ class Sprint5IntegrationTest {
     }
 
     @Test
+    void recommendationsReturnPublishedCoursesForACompletelyNewParticipant() throws Exception {
+        assertTrue(preferences.findByParticipantEmail(outsider.getEmail()).isEmpty());
+        assertTrue(favorites.findByParticipantEmailOrderByCreatedAtDesc(outsider.getEmail()).isEmpty());
+        assertTrue(inscriptions.findByParticipantEmailOrderByDateInscriptionDesc(outsider.getEmail()).isEmpty());
+        assertTrue(activities.findTop10ByParticipantEmailOrderByOccurredAtDesc(outsider.getEmail()).isEmpty());
+
+        mvc.perform(get("/api/participant/recommandations")
+                        .header("Authorization", "Bearer " + jwt.generate(outsider)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0].formationId").isNumber())
+                .andExpect(jsonPath("$[0].score").value(0))
+                .andExpect(jsonPath("$[0].raisons[0]").value("Formation publiée à découvrir"));
+    }
+
+    @Test
     void resumePrivateNotesAndJourneyEnforceEnrollmentOwnershipAndPrerequisites() {
         learningService.enroll(participant.getEmail(), formationId);
         ResumeResponse position = engagement.recordPosition(participant.getEmail(), formationId,
@@ -179,6 +224,43 @@ class Sprint5IntegrationTest {
     }
 
     @Test
+    void bookmarksAreIdempotentPerExactTargetWhileFreeNotesRemainMultiple() throws Exception {
+        learningService.enroll(participant.getEmail(), formationId);
+        PrivateNoteRequest free = new PrivateNoteRequest(firstChapter, resourceId, "Note libre", false);
+        PrivateNoteResponse firstFree = engagement.createNote(participant.getEmail(), formationId, free);
+        PrivateNoteResponse secondFree = engagement.createNote(participant.getEmail(), formationId, free);
+        assertNotEquals(firstFree.id(), secondFree.id());
+
+        PrivateNoteRequest bookmark = new PrivateNoteRequest(firstChapter, resourceId, null, true);
+        PrivateNoteResponse firstBookmark = engagement.createNote(participant.getEmail(), formationId, bookmark);
+        PrivateNoteResponse repeatedBookmark = engagement.createNote(participant.getEmail(), formationId, bookmark);
+        assertEquals(firstBookmark.id(), repeatedBookmark.id());
+
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var calls = List.of(
+                    executor.submit(() -> { ready.countDown(); start.await(); return engagement.createNote(participant.getEmail(), formationId, bookmark).id(); }),
+                    executor.submit(() -> { ready.countDown(); start.await(); return engagement.createNote(participant.getEmail(), formationId, bookmark).id(); })
+            );
+            ready.await();
+            start.countDown();
+            assertEquals(firstBookmark.id(), calls.get(0).get());
+            assertEquals(firstBookmark.id(), calls.get(1).get());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        List<PrivateNote> stored = notes.findByParticipantEmailAndFormationIdOrderByUpdatedAtDesc(
+                participant.getEmail(), formationId);
+        assertEquals(3, stored.size());
+        assertEquals(1, stored.stream().filter(PrivateNote::isSignet)
+                .filter(note -> note.getRessource().getId().equals(resourceId)).count());
+        assertTrue(engagement.notes(outsider.getEmail(), formationId).isEmpty());
+    }
+
+    @Test
     void reviewsRequireProgressSupportRealAveragesRepliesReportsAndModeration() {
         learningService.enroll(participant.getEmail(), formationId);
         BusinessException threshold = assertThrows(BusinessException.class, () ->
@@ -212,22 +294,25 @@ class Sprint5IntegrationTest {
                 new ReviewReportRequest("Vérification de modération demandée"));
         assertEquals(ReviewStatus.SIGNALE,
                 engagement.trainerEngagement(trainer.getEmail()).avis().getFirst().statut());
-        assertFalse(engagement.reviewReports().isEmpty());
+        assertFalse(moderation.pending(0, 20).content().isEmpty());
         ReviewSummary ownerView = engagement.publicReviews(
                 formationId, 0, 10, participant.getEmail());
         assertEquals(0, ownerView.nombre());
         assertTrue(ownerView.content().getFirst().proprietaire());
         assertEquals(ReviewStatus.SIGNALE, ownerView.content().getFirst().statut());
 
-        engagement.moderateReview(review.id(), new ReviewModerationRequest(ReviewStatus.MASQUE));
+        authenticate(admin);
+        moderation.hide(review.id());
         assertEquals(0, engagement.publicReviews(formationId, 0, 10, null).nombre());
-        BusinessException invalidModeration = assertThrows(BusinessException.class, () ->
-                engagement.moderateReview(review.id(),
-                        new ReviewModerationRequest(ReviewStatus.SIGNALE)));
-        assertEquals("INVALID_MODERATION_STATUS", invalidModeration.getCode());
+        BusinessException secondDecision = assertThrows(BusinessException.class,
+                () -> moderation.republish(review.id()));
+        assertEquals("REVIEW_ALREADY_MODERATED", secondDecision.getCode());
 
-        engagement.deleteReview(participant.getEmail(), review.id());
-        assertTrue(engagement.reviewReports().isEmpty());
+        BusinessException protectedHistory = assertThrows(BusinessException.class,
+                () -> engagement.deleteReview(participant.getEmail(), review.id()));
+        assertEquals("REVIEW_HAS_MODERATION_HISTORY", protectedHistory.getCode());
+        assertEquals(ReviewReportStatus.TRAITE_AVIS_MASQUE,
+                reviewReports.findByReviewIdOrderByIdAsc(review.id()).getFirst().getStatutTraitement());
     }
 
     @Test
@@ -265,20 +350,22 @@ class Sprint5IntegrationTest {
         assertEquals("Architecture Java", updated.specialite());
         assertEquals(formationId, engagement.instructor(trainer.getId()).formations().getFirst().id());
 
-        engagement.sendNotification(participant.getEmail(), NotificationCategory.OBJECTIF_HEBDOMADAIRE,
-                "Objectif de la semaine", "Une activité significative suffit pour commencer.", "/profile");
+        engagement.sendNotification(participant.getEmail(), NotificationCategory.QUIZ,
+                "Quiz disponible", "Un quiz publié est disponible.", "/profile");
         NotificationPage notificationPage = engagement.notifications(participant.getEmail(), 0, 20);
         assertEquals(1, notificationPage.nonLues());
         engagement.markRead(participant.getEmail(), notificationPage.content().getFirst().id());
         assertEquals(0, engagement.notifications(participant.getEmail(), 0, 20).nonLues());
 
         engagement.updateNotificationPreference(participant.getEmail(),
-                new NotificationPreferenceRequest(NotificationCategory.OBJECTIF_HEBDOMADAIRE, false, false));
-        engagement.sendNotification(participant.getEmail(), NotificationCategory.OBJECTIF_HEBDOMADAIRE,
+                new NotificationPreferenceRequest(NotificationCategory.QUIZ, false, false));
+        engagement.sendNotification(participant.getEmail(), NotificationCategory.QUIZ,
                 "Ne doit pas être créée", "Préférence désactivée.", "/profile");
         assertEquals(1, engagement.notifications(participant.getEmail(), 0, 20).content().size());
-        assertEquals(NotificationCategory.values().length,
+        assertEquals(5,
                 engagement.notificationPreferences(participant.getEmail()).size());
+        assertTrue(engagement.notificationPreferences(participant.getEmail()).stream()
+                .anyMatch(preference -> preference.categorie() == NotificationCategory.CERTIFICATE_AVAILABLE));
         engagement.markAllRead(participant.getEmail());
 
         String participantToken = jwt.generate(participant);
@@ -317,6 +404,93 @@ class Sprint5IntegrationTest {
                 .andExpect(jsonPath("$.email").doesNotExist());
     }
 
+    @Test
+    void publicInstructorContractNeverLeaksPrivateClassData() throws Exception {
+        engagement.updateInstructor(trainer.getEmail(),
+                new InstructorProfileRequest("Architecture Java", "Biographie publique autorisée."));
+        participant.setNom("Participant privé Alpha");
+        users.saveAndFlush(participant);
+
+        Long classFormationId = formationService.create(trainer.getEmail(), new FormationRequest(
+                "Formation avec classe privée", "Formation publiée sans exposition du groupe", "fr",
+                NiveauFormation.INTERMEDIAIRE, "Java", new BigDecimal("120.00"),
+                new BigDecimal("30.00"), false)).id();
+        Long moduleId = formationService.addModule(trainer.getEmail(), classFormationId,
+                new ModuleRequest("Programme privé", null, false)).id();
+        Long privateChapterId = formationService.addChapitre(trainer.getEmail(), moduleId,
+                new ChapitreRequest("Chapitre privé", null)).id();
+        formationService.addYoutube(trainer.getEmail(), privateChapterId,
+                new YoutubeRequest("Ressource privée", "https://youtu.be/private-class-course"));
+        formationService.changeStatus(trainer.getEmail(), classFormationId, FormationStatus.PUBLIEE);
+
+        var privateClass = virtualClasses.create(trainer.getEmail(), new VirtualClassDtos.ClasseRequest(
+                classFormationId, "Groupe privé Alpha", "Description réservée aux membres", 12,
+                LocalDate.now(), LocalDate.now().plusDays(30)));
+        learningService.enrollComplete(participant.getEmail(), classFormationId,
+                "public-profile-private-class-" + privateClass.id());
+        virtualClasses.addMember(trainer.getEmail(), privateClass.id(), participant.getId());
+        Instant privateStart = Instant.now().plusSeconds(3600);
+        var privateSession = virtualClasses.schedule(trainer.getEmail(), privateClass.id(),
+                new VirtualClassDtos.SessionRequest("Séance confidentielle Alpha", privateStart,
+                        privateStart.plusSeconds(3600), "Africa/Casablanca"));
+        String privateRoom = sessions.findById(privateSession.id()).orElseThrow().getIdentifiantSalle();
+
+        String publicJson = mvc.perform(get("/api/formateurs/" + trainer.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nom").value(trainer.getNom()))
+                .andExpect(jsonPath("$.specialite").value("Architecture Java"))
+                .andExpect(jsonPath("$.formations[*].id").value(
+                        org.hamcrest.Matchers.hasItem(classFormationId.intValue())))
+                .andReturn().getResponse().getContentAsString();
+
+        assertPublicProfileHasNoPrivateClassData(json.readTree(publicJson), Set.of(
+                "Groupe privé Alpha", "Description réservée aux membres",
+                "Séance confidentielle Alpha", privateStart.toString(), privateRoom,
+                participant.getNom(), participant.getEmail()));
+
+        var trainerPrivateClass = virtualClasses.trainerClasses(trainer.getEmail()).stream()
+                .filter(value -> value.id().equals(privateClass.id())).findFirst().orElseThrow();
+        assertEquals("Séance confidentielle Alpha", trainerPrivateClass.seances().getFirst().titre());
+        assertEquals(participant.getEmail(), trainerPrivateClass.membres().getFirst().email());
+        assertEquals("Séance confidentielle Alpha",
+                virtualClasses.mine(participant.getEmail()).getFirst().seances().getFirst().titre());
+
+        Formateur otherActiveTrainer = save(new Formateur(),
+                "public-other-" + SEQUENCE.incrementAndGet() + "@test.local", Role.FORMATEUR);
+        mvc.perform(get("/api/formateurs/" + otherActiveTrainer.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.formations").isEmpty());
+
+        Formateur pendingTrainer = new Formateur();
+        pendingTrainer.setNom("Formateur en attente privé");
+        pendingTrainer.setEmail("public-pending-" + SEQUENCE.incrementAndGet() + "@test.local");
+        pendingTrainer.setPasswordHash("hash");
+        pendingTrainer.setRole(Role.FORMATEUR);
+        pendingTrainer.setStatut(AccountStatus.EN_ATTENTE);
+        pendingTrainer = users.saveAndFlush(pendingTrainer);
+        mvc.perform(get("/api/formateurs/" + pendingTrainer.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    private void assertPublicProfileHasNoPrivateClassData(JsonNode node, Set<String> privateValues) {
+        Set<String> forbiddenFields = Set.of(
+                "prochaineClasse", "classe", "classes", "seance", "seances",
+                "membres", "roomName", "baseUrl", "joinUrl", "identifiantSalle",
+                "email", "telephone");
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> {
+                assertFalse(forbiddenFields.contains(entry.getKey()),
+                        () -> "Champ privé exposé dans le profil public : " + entry.getKey());
+                assertPublicProfileHasNoPrivateClassData(entry.getValue(), privateValues);
+            });
+        } else if (node.isArray()) {
+            node.forEach(child -> assertPublicProfileHasNoPrivateClassData(child, privateValues));
+        } else if (node.isTextual()) {
+            privateValues.forEach(value -> assertFalse(node.textValue().contains(value),
+                    () -> "Valeur privée exposée dans le profil public : " + value));
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private <T extends User> T save(T user, String email, Role role) {
         user.setNom(role.name() + " Sprint 5");
@@ -325,5 +499,10 @@ class Sprint5IntegrationTest {
         user.setRole(role);
         user.setStatut(AccountStatus.ACTIF);
         return (T) users.saveAndFlush(user);
+    }
+
+    private void authenticate(Admin actor) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                actor.getEmail(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
     }
 }

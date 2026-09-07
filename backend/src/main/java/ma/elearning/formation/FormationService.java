@@ -40,11 +40,12 @@ public class FormationService {
     private final ObjectStorage storage;
     private final UploadValidator uploads;
     private final EngagementService engagement;
+    private final ma.elearning.storage.ObjectCleanupService cleanup;
 
     public FormationService(FormationRepository formations, FormationModuleRepository modules,
                             ChapitreRepository chapitres, RessourceRepository ressources,
                             FormateurRepository formateurs, ObjectStorage storage, UploadValidator uploads,
-                            EngagementService engagement) {
+                            EngagementService engagement, ma.elearning.storage.ObjectCleanupService cleanup) {
         this.formations = formations;
         this.modules = modules;
         this.chapitres = chapitres;
@@ -53,6 +54,7 @@ public class FormationService {
         this.storage = storage;
         this.uploads = uploads;
         this.engagement = engagement;
+        this.cleanup = cleanup;
     }
 
     @Transactional
@@ -74,9 +76,13 @@ public class FormationService {
         return FormationMapper.toDetail(ownedFormation(email, id));
     }
 
+    @Transactional(readOnly = true)
+    public Map<String,Object> coverAccess(String email,Long id){Formation formation=ownedFormation(email,id);if(formation.getImageCouvertureKey()==null)return Map.of();return Map.of("url",storage.temporaryUrl(formation.getImageCouvertureKey()));}
+
     @Transactional
     public FormationDetail update(String email, Long id, FormationRequest request) {
         Formation formation = ownedFormation(email, id);
+        requireEditable(formation);
         apply(formation, request);
         return FormationMapper.toDetail(formations.saveAndFlush(formation));
     }
@@ -84,11 +90,8 @@ public class FormationService {
     @Transactional
     public FormationDetail changeStatus(String email, Long id, FormationStatus status) {
         Formation formation = ownedFormation(email, id);
-        if (status == FormationStatus.PUBLIEE && (formation.getModules().isEmpty() ||
-                formation.getModules().stream().anyMatch(module -> module.getChapitres().isEmpty()))) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INCOMPLETE_FORMATION",
-                    "Une formation publiée doit contenir au moins un module et un chapitre par module.");
-        }
+        requireTransition(formation.getStatut(), status);
+        if (status == FormationStatus.PUBLIEE) validatePublication(formation);
         formation.setStatut(status);
         return FormationMapper.toDetail(formations.saveAndFlush(formation));
     }
@@ -96,6 +99,7 @@ public class FormationService {
     @Transactional
     public FormationDetail uploadCover(String email, Long id, MultipartFile file) {
         Formation formation = ownedFormation(email, id);
+        requireEditable(formation);
         ValidatedFile valid = uploads.validate(file, ResourceType.IMAGE);
         String key = "formations/" + formation.getId() + "/couverture/" + UUID.randomUUID() + "." + valid.extension();
         put(file, key, valid);
@@ -104,7 +108,7 @@ public class FormationService {
             formation.setImageCouvertureKey(key);
             formations.saveAndFlush(formation);
         } catch (RuntimeException ex) {
-            safeDelete(key);
+            compensateUploadedObject(key);
             throw ex;
         }
         if (oldKey != null) deleteAfterCommit(oldKey);
@@ -114,6 +118,7 @@ public class FormationService {
     @Transactional
     public ModuleResponse addModule(String email, Long formationId, ModuleRequest request) {
         Formation formation = ownedFormation(email, formationId);
+        requireEditable(formation);
         long count = modules.countByFormationId(formationId);
         if (request.apercuGratuit() && count != 0) throw previewError();
         FormationModule module = new FormationModule();
@@ -121,17 +126,13 @@ public class FormationService {
         apply(module, request);
         module.setPosition(Math.toIntExact(count));
         ModuleResponse response = FormationMapper.toModule(modules.saveAndFlush(module));
-        if (formation.getStatut() == FormationStatus.PUBLIEE) {
-            engagement.notifyFormationParticipants(formation, NotificationCategory.NOUVEAU_CONTENU,
-                    "Nouveau module disponible", "Le module " + module.getTitre() + " a été ajouté à " + formation.getTitre() + ".",
-                    "/catalogue/" + formation.getId());
-        }
         return response;
     }
 
     @Transactional
     public ModuleResponse updateModule(String email, Long id, ModuleRequest request) {
         FormationModule module = ownedModule(email, id);
+        requireEditable(module.getFormation());
         if (request.apercuGratuit() && module.getPosition() != 0) throw previewError();
         apply(module, request);
         return FormationMapper.toModule(modules.saveAndFlush(module));
@@ -140,6 +141,9 @@ public class FormationService {
     @Transactional
     public void deleteModule(String email, Long id) {
         FormationModule module = ownedModule(email, id);
+        requireEditable(module.getFormation());
+        if (module.getFormation().getStatut() == FormationStatus.PUBLIEE && module.getFormation().getModules().size() == 1)
+            throw publishedIntegrity();
         Long formationId = module.getFormation().getId();
         List<String> keys = module.getChapitres().stream().flatMap(c -> c.getRessources().stream())
                 .map(RessourcePedagogique::getCleStockage).filter(Objects::nonNull).toList();
@@ -151,7 +155,8 @@ public class FormationService {
 
     @Transactional
     public List<ModuleResponse> reorderModules(String email, Long formationId, ReorderRequest request) {
-        ownedFormation(email, formationId);
+        Formation formation = ownedFormation(email, formationId);
+        requireEditable(formation);
         List<FormationModule> current = modules.findByFormationIdOrderByPosition(formationId);
         assertExactIds(request.ids(), current.stream().map(FormationModule::getId).toList());
         Map<Long, FormationModule> byId = indexModules(current);
@@ -169,6 +174,7 @@ public class FormationService {
     @Transactional
     public ChapitreResponse addChapitre(String email, Long moduleId, ChapitreRequest request) {
         FormationModule module = ownedModule(email, moduleId);
+        requireEditable(module.getFormation());
         Chapitre chapitre = new Chapitre();
         chapitre.setModule(module);
         apply(chapitre, request);
@@ -179,6 +185,7 @@ public class FormationService {
     @Transactional
     public ChapitreResponse updateChapitre(String email, Long id, ChapitreRequest request) {
         Chapitre chapitre = ownedChapitre(email, id);
+        requireEditable(chapitre.getModule().getFormation());
         apply(chapitre, request);
         return FormationMapper.toChapitre(chapitres.saveAndFlush(chapitre));
     }
@@ -186,6 +193,9 @@ public class FormationService {
     @Transactional
     public void deleteChapitre(String email, Long id) {
         Chapitre chapitre = ownedChapitre(email, id);
+        requireEditable(chapitre.getModule().getFormation());
+        if (chapitre.getModule().getFormation().getStatut() == FormationStatus.PUBLIEE && chapitre.getModule().getChapitres().size() == 1)
+            throw publishedIntegrity();
         Long moduleId = chapitre.getModule().getId();
         List<String> keys = chapitre.getRessources().stream().map(RessourcePedagogique::getCleStockage)
                 .filter(Objects::nonNull).toList();
@@ -197,7 +207,8 @@ public class FormationService {
 
     @Transactional
     public List<ChapitreResponse> reorderChapitres(String email, Long moduleId, ReorderRequest request) {
-        ownedModule(email, moduleId);
+        FormationModule module = ownedModule(email, moduleId);
+        requireEditable(module.getFormation());
         List<Chapitre> current = chapitres.findByModuleIdOrderByPosition(moduleId);
         assertExactIds(request.ids(), current.stream().map(Chapitre::getId).toList());
         Map<Long, Chapitre> byId = new HashMap<>();
@@ -213,6 +224,7 @@ public class FormationService {
     public RessourceResponse uploadResource(String email, Long chapitreId, String titre,
                                              ResourceType type, boolean telechargeable, MultipartFile file) {
         Chapitre chapitre = ownedChapitre(email, chapitreId);
+        requireEditable(chapitre.getModule().getFormation());
         String safeTitle = title(titre);
         ValidatedFile valid = uploads.validate(file, type);
         String key = "formations/" + chapitre.getModule().getFormation().getId() + "/chapitres/" +
@@ -229,9 +241,11 @@ public class FormationService {
         resource.setCleStockage(key);
         resource.setTelechargeable(telechargeable && (type == ResourceType.PDF || type == ResourceType.VIDEO));
         try {
-            return FormationMapper.toRessource(ressources.saveAndFlush(resource));
+            RessourceResponse response = FormationMapper.toRessource(ressources.saveAndFlush(resource));
+            notifyPublishedModuleIfComplete(chapitre.getModule());
+            return response;
         } catch (RuntimeException ex) {
-            safeDelete(key);
+            compensateUploadedObject(key);
             throw ex;
         }
     }
@@ -239,6 +253,7 @@ public class FormationService {
     @Transactional
     public RessourceResponse addYoutube(String email, Long chapitreId, YoutubeRequest request) {
         Chapitre chapitre = ownedChapitre(email, chapitreId);
+        requireEditable(chapitre.getModule().getFormation());
         RessourcePedagogique resource = new RessourcePedagogique();
         resource.setChapitre(chapitre);
         resource.setType(ResourceType.YOUTUBE);
@@ -246,12 +261,15 @@ public class FormationService {
         resource.setPosition(Math.toIntExact(ressources.countByChapitreId(chapitreId)));
         resource.setUrlYoutube(validYoutubeUrl(request.urlYoutube()));
         resource.setTelechargeable(false);
-        return FormationMapper.toRessource(ressources.saveAndFlush(resource));
+        RessourceResponse response = FormationMapper.toRessource(ressources.saveAndFlush(resource));
+        notifyPublishedModuleIfComplete(chapitre.getModule());
+        return response;
     }
 
     @Transactional
     public RessourceResponse updateResource(String email, Long id, ResourceUpdateRequest request) {
         RessourcePedagogique resource = ownedResource(email, id);
+        requireEditable(resource.getChapitre().getModule().getFormation());
         resource.setTitre(title(request.titre()));
         resource.setTelechargeable(request.telechargeable() &&
                 (resource.getType() == ResourceType.PDF || resource.getType() == ResourceType.VIDEO));
@@ -261,6 +279,9 @@ public class FormationService {
     @Transactional
     public void deleteResource(String email, Long id) {
         RessourcePedagogique resource = ownedResource(email, id);
+        requireEditable(resource.getChapitre().getModule().getFormation());
+        if (resource.getChapitre().getModule().getFormation().getStatut() == FormationStatus.PUBLIEE && resource.getChapitre().getRessources().size() == 1)
+            throw publishedIntegrity();
         Long chapitreId = resource.getChapitre().getId();
         String key = resource.getCleStockage();
         ressources.delete(resource);
@@ -271,7 +292,8 @@ public class FormationService {
 
     @Transactional
     public List<RessourceResponse> reorderResources(String email, Long chapitreId, ReorderRequest request) {
-        ownedChapitre(email, chapitreId);
+        Chapitre chapitre = ownedChapitre(email, chapitreId);
+        requireEditable(chapitre.getModule().getFormation());
         List<RessourcePedagogique> current = ressources.findByChapitreIdOrderByPosition(chapitreId);
         assertExactIds(request.ids(), current.stream().map(RessourcePedagogique::getId).toList());
         Map<Long, RessourcePedagogique> byId = new HashMap<>();
@@ -284,6 +306,7 @@ public class FormationService {
     }
 
     private void apply(Formation formation, FormationRequest request) {
+        validatePricing(request.supplementClasses(), request.classesGratuites());
         formation.setTitre(request.titre().trim());
         formation.setDescription(request.description().trim());
         formation.setLangue(request.langue().trim().toLowerCase(Locale.ROOT));
@@ -292,9 +315,88 @@ public class FormationService {
         formation.setPrix(request.prix().setScale(2, RoundingMode.UNNECESSARY));
         formation.setSupplementClasses(request.supplementClasses().setScale(2, RoundingMode.UNNECESSARY));
         formation.setClassesGratuites(request.classesGratuites());
-        if (request.supplementClasses().signum() == 0 && !request.classesGratuites()) {
-            formation.setClassesGratuites(false);
+    }
+
+    private void validatePricing(java.math.BigDecimal supplement, boolean freeClasses) {
+        if (supplement.signum() < 0) throw new BusinessException(HttpStatus.BAD_REQUEST,
+                "INVALID_CLASS_PRICING", "Le supplément classes ne peut pas être négatif.");
+        if (freeClasses && supplement.signum() != 0) throw new BusinessException(HttpStatus.BAD_REQUEST,
+                "INVALID_CLASS_PRICING", "Une offre de classes gratuites doit avoir un supplément nul.");
+    }
+
+    private void validatePublication(Formation formation) {
+        validatePricing(formation.getSupplementClasses(), formation.isClassesGratuites());
+        List<FormationModule> orderedModules = formation.getModules();
+        if (orderedModules.isEmpty()) throw incomplete("Ajoutez au moins un module.");
+        assertPositions(orderedModules.stream().map(FormationModule::getPosition).toList());
+        for (FormationModule module : orderedModules) {
+            if (module.getChapitres().isEmpty()) throw incomplete("Chaque module doit contenir au moins un chapitre.");
+            assertPositions(module.getChapitres().stream().map(Chapitre::getPosition).toList());
+            for (Chapitre chapter : module.getChapitres()) {
+                if (chapter.getRessources().isEmpty())
+                    throw incomplete("Chaque chapitre doit contenir au moins une ressource exploitable.");
+                assertPositions(chapter.getRessources().stream().map(RessourcePedagogique::getPosition).toList());
+                if (chapter.getRessources().stream().anyMatch(resource -> resource.getStatut() != ResourceStatus.DISPONIBLE))
+                    throw incomplete("Toutes les ressources doivent être disponibles.");
+            }
         }
+        List<FormationModule> previews = orderedModules.stream().filter(FormationModule::isApercuGratuit).toList();
+        if (!previews.isEmpty() && (previews.size() != 1 || previews.getFirst().getPosition() != 0))
+            throw incomplete("L’aperçu gratuit doit être porté uniquement par le premier module.");
+    }
+
+    private void assertPositions(List<Integer> positions) {
+        if (new HashSet<>(positions).size() != positions.size())
+            throw incomplete("L’ordre du contenu doit être continu et sans duplication.");
+        for (int i = 0; i < positions.size(); i++) if (!positions.contains(i))
+            throw incomplete("L’ordre du contenu doit être continu et sans duplication.");
+    }
+
+    private void requireTransition(FormationStatus from, FormationStatus to) {
+        if (from == to) return;
+        boolean allowed = switch (from) {
+            case BROUILLON -> to == FormationStatus.PUBLIEE || to == FormationStatus.ARCHIVEE;
+            case PUBLIEE -> to == FormationStatus.DEPUBLIEE || to == FormationStatus.ARCHIVEE;
+            case DEPUBLIEE -> to == FormationStatus.PUBLIEE || to == FormationStatus.ARCHIVEE;
+            case ARCHIVEE -> false;
+        };
+        if (!allowed) throw new BusinessException(HttpStatus.CONFLICT, "INVALID_FORMATION_TRANSITION",
+                "Cette transition de statut n’est pas autorisée.");
+    }
+
+    private void requireEditable(Formation formation) {
+        if (formation.getStatut() == FormationStatus.ARCHIVEE) throw new BusinessException(HttpStatus.CONFLICT,
+                "FORMATION_ARCHIVED", "Une formation archivée ne peut plus être modifiée.");
+    }
+
+    private void requireStructuralDraft(Formation formation, String message) {
+        requireEditable(formation);
+        if (formation.getStatut() == FormationStatus.PUBLIEE)
+            throw new BusinessException(HttpStatus.CONFLICT, "UNPUBLISH_REQUIRED", message);
+    }
+
+    private void notifyPublishedModuleIfComplete(FormationModule module) {
+        Formation formation = module.getFormation();
+        if (formation.getStatut() == FormationStatus.PUBLIEE && modulePublishable(module))
+            engagement.notifyFormationParticipants(formation, NotificationCategory.NOUVEAU_CONTENU,
+                    "module-published:" + module.getId(), "Nouveau module disponible",
+                    "Le module " + module.getTitre() + " a été ajouté à " + formation.getTitre() + ".",
+                    "/catalogue/" + formation.getId());
+    }
+
+    private boolean modulePublishable(FormationModule module) {
+        return !module.getChapitres().isEmpty() && module.getChapitres().stream().allMatch(chapter ->
+                !chapter.getRessources().isEmpty() && chapter.getRessources().stream()
+                        .allMatch(resource -> resource.getStatut() == ResourceStatus.DISPONIBLE));
+    }
+
+    private BusinessException publishedIntegrity() {
+        return new BusinessException(HttpStatus.CONFLICT, "UNPUBLISH_REQUIRED",
+                "Cette suppression rendrait la formation publiée incohérente. Dépubliez-la d’abord.");
+    }
+
+    private BusinessException incomplete(String detail) {
+        return new BusinessException(HttpStatus.CONFLICT, "INCOMPLETE_FORMATION", detail);
     }
 
     private void apply(FormationModule module, ModuleRequest request) {
@@ -437,20 +539,21 @@ public class FormationService {
     }
 
     private void deleteAfterCommit(String key) {
+        Long taskId = cleanup.enqueue(key);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            safeDelete(key);
+            cleanup.process(taskId);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() { safeDelete(key); }
+            @Override public void afterCommit() { cleanup.process(taskId); }
         });
     }
 
-    private void safeDelete(String key) {
-        try {
-            storage.delete(key);
-        } catch (RuntimeException ex) {
-            log.error("Impossible de supprimer l'objet MinIO {}", key, ex);
+    private void compensateUploadedObject(String key) {
+        try { storage.delete(key); }
+        catch (RuntimeException failure) {
+            cleanup.enqueueCompensation(key);
+            log.warn("Nettoyage compensatoire enregistré après échec de persistance.");
         }
     }
 }

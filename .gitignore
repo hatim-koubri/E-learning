@@ -4,6 +4,9 @@ backend/target/
 web/node_modules/
 web/.next/
 web/coverage/
+.scannerwork/
+mobile/android/build/
+output/
 *.tsbuildinfo
 *.log
 uploads/
@@ -11,3 +14,4 @@ uploads/
 .idea/
 .vscode/
 tmp/
+.codex-backend-run/

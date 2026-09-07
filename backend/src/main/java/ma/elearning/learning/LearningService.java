@@ -8,6 +8,9 @@ import ma.elearning.storage.ObjectStorage;
 import ma.elearning.engagement.*;
 import ma.elearning.user.*;
 import ma.elearning.virtualclass.ClasseRepository;
+import ma.elearning.quiz.QuizRepository;
+import ma.elearning.quiz.TentativeQuizRepository;
+import ma.elearning.quiz.CertificateEligibilityNotificationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
@@ -28,15 +31,20 @@ public class LearningService {
  private final OperationAccesRepository operations;
  private final EngagementService engagement;
  private final ClasseRepository classes;
+ private final QuizRepository quizzes;private final TentativeQuizRepository attempts;
+ private final CertificateEligibilityNotificationService eligibilityNotifications;
  public LearningService(FormationRepository formations,RessourceRepository ressources,ChapitreRepository chapitres,
   InscriptionRepository inscriptions,ProgressionChapitreRepository progressions,UserRepository users,ObjectStorage storage,
   @Value("${app.storage.url-expiry-seconds:300}") int expiry,OperationAccesRepository operations,EngagementService engagement,
-  ClasseRepository classes){
+  ClasseRepository classes,QuizRepository quizzes,TentativeQuizRepository attempts,
+  CertificateEligibilityNotificationService eligibilityNotifications){
   this.formations=formations;this.ressources=ressources;this.chapitres=chapitres;this.inscriptions=inscriptions;
   this.progressions=progressions;this.users=users;this.storage=storage;this.expiry=expiry;
   this.operations=operations;
   this.engagement=engagement;
   this.classes=classes;
+  this.quizzes=quizzes;this.attempts=attempts;
+  this.eligibilityNotifications=eligibilityNotifications;
  }
  @Transactional
  public UpgradeResponse upgrade(String email,Long formationId,String key){
@@ -47,7 +55,7 @@ public class LearningService {
     throw error(HttpStatus.CONFLICT,"IDEMPOTENCY_KEY_CONFLICT","Cette clé est déjà utilisée.");
    return upgradeResponse(previous);
   }
-  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+  Inscription i=inscriptions.findLockedByParticipantEmailAndFormationId(email,formationId)
    .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Achetez d'abord l'accès au contenu."));
   if(i.getTypeAcces()==TypeAcces.CONTENU_ET_CLASSES)
    throw error(HttpStatus.CONFLICT,"ALREADY_UPGRADED","L'accès avec classes est déjà actif.");
@@ -85,12 +93,13 @@ public class LearningService {
   Formation f=published(id); boolean full=hasFullAccess(f,email);
   Inscription inscription=email==null?null:inscriptions.findByParticipantEmailAndFormationId(email,id).orElse(null);
   boolean classesDisponibles=f.getSupplementClasses().signum()>0||f.isClassesGratuites();
-  int chapterCount=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
+  List<FormationModule> visibleModules=f.getModules().stream().filter(this::modulePublishable).toList();
+  int chapterCount=visibleModules.stream().mapToInt(m->m.getChapitres().size()).sum();
   return new CatalogueDetail(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),
    f.getNiveau(),f.getCategorie(),f.getPrix(),f.getSupplementClasses(),f.getPrix().add(f.getSupplementClasses()),
    f.isClassesGratuites(),classesDisponibles,"DH",f.getFormateur().getId(),f.getFormateur().getNom(),
-   f.getModules().size(),chapterCount,inscription!=null,inscription==null?null:inscription.getTypeAcces(),
-   f.getModules().stream().map(m->module(m,full)).toList());
+   visibleModules.size(),chapterCount,inscription!=null,inscription==null?null:inscription.getTypeAcces(),
+   java.util.stream.IntStream.range(0,visibleModules.size()).mapToObj(index->module(visibleModules.get(index),full,index)).toList());
  }
  @Transactional
  public InscriptionResponse enroll(String email,Long formationId){
@@ -110,6 +119,7 @@ public class LearningService {
   Formation f=published(formationId);
   RessourcePedagogique r=ressources.findById(resourceId).orElseThrow(this::notFound);
   if(!r.getChapitre().getModule().getFormation().getId().equals(formationId))throw notFound();
+  if(!modulePublishable(r.getChapitre().getModule()))throw notFound();
   boolean preview=r.getChapitre().getModule().isApercuGratuit();
   boolean full=hasFullAccess(f,email);
   if(!preview&&!full)throw error(HttpStatus.FORBIDDEN,"CONTENT_LOCKED","Une inscription active est requise.");
@@ -120,16 +130,26 @@ public class LearningService {
  }
  @Transactional
  public ProgressResponse progress(String email,Long formationId,Long chapterId,boolean completed,int seconds){
-  Inscription i=inscriptions.findByParticipantEmailAndFormationId(email,formationId)
+  Inscription i=inscriptions.findLockedByParticipantEmailAndFormationId(email,formationId)
    .orElseThrow(()->error(HttpStatus.FORBIDDEN,"ENROLLMENT_REQUIRED","Une inscription active est requise."));
   Chapitre chapter=chapitres.findById(chapterId).orElseThrow(this::notFound);
   if(!chapter.getModule().getFormation().getId().equals(formationId))throw notFound();
-  List<Chapitre> ordered=i.getFormation().getModules().stream().flatMap(m->m.getChapitres().stream()).toList();
+  List<Chapitre> ordered=i.getFormation().getModules().stream().filter(this::modulePublishable).flatMap(m->m.getChapitres().stream()).toList();
   int index=ordered.indexOf(chapter);
   if(completed&&index>0){
    Set<Long> done=progressions.findByInscriptionId(i.getId()).stream().filter(ProgressionChapitre::isTermine)
     .map(p->p.getChapitre().getId()).collect(java.util.stream.Collectors.toSet());
    if(!done.contains(ordered.get(index-1).getId()))throw error(HttpStatus.CONFLICT,"PREREQUISITE_REQUIRED","Terminez le chapitre précédent.");
+  }
+  if(completed&&index>0){
+   FormationModule currentModule=chapter.getModule();int moduleIndex=i.getFormation().getModules().indexOf(currentModule);
+   if(moduleIndex>0&&currentModule.getChapitres().getFirst().getId().equals(chapterId)){
+    FormationModule previousModule=i.getFormation().getModules().get(moduleIndex-1);Long lastId=previousModule.getChapitres().getLast().getId();
+    var moduleQuiz=quizzes.findByFormationIdAndPublieTrueOrderByOrdre(formationId).stream()
+     .filter(value->value.getChapitre()!=null&&value.getChapitre().getId().equals(lastId)).findFirst().orElse(null);
+    if(moduleQuiz!=null&&!attempts.existsByInscriptionIdAndQuizIdAndReussiTrue(i.getId(),moduleQuiz.getId()))
+     throw error(HttpStatus.CONFLICT,"MODULE_QUIZ_REQUIRED","Réussissez le quiz du module précédent avant de continuer.");
+   }
   }
   ProgressionChapitre p=progressions.findByInscriptionIdAndChapitreId(i.getId(),chapterId).orElseGet(()->{
    ProgressionChapitre n=new ProgressionChapitre();n.setInscription(i);n.setChapitre(chapter);return n;});
@@ -139,6 +159,7 @@ public class LearningService {
   i.setProgression(percent);inscriptions.save(i);
   engagement.recordPosition(email,formationId,new LearningPositionRequest(chapter.getModule().getId(),chapterId,null));
   if(completed)engagement.recordActivity(email,formationId,ActivityType.CHAPITRE_TERMINE,"chapter:"+chapterId,10);
+  if(completed)eligibilityNotifications.notifyIfEligible(i);
   return new ProgressResponse(formationId,chapterId,p.isTermine(),p.getPositionVideoSecondes(),percent);
  }
  public boolean hasFullAccess(Formation f,String email){
@@ -149,14 +170,15 @@ public class LearningService {
  }
  @Transactional(readOnly=true) public List<MyFormation> mine(String email){return inscriptions.findByParticipantEmailOrderByDateInscriptionDesc(email).stream().map(i->new MyFormation(i.getId(),i.getFormation().getId(),i.getFormation().getTitre(),i.getTypeAcces(),i.getStatut(),i.getProgression(),i.getPrixPaye(),i.getDevise())).toList();}
  private boolean isParticipantEnrolled(String email,Long id){return email!=null&&inscriptions.findByParticipantEmailAndFormationId(email,id).isPresent();}
- private CatalogueItem item(Formation f){int chapters=f.getModules().stream().mapToInt(m->m.getChapitres().size()).sum();
+ private CatalogueItem item(Formation f){List<FormationModule> visible=f.getModules().stream().filter(this::modulePublishable).toList();int chapters=visible.stream().mapToInt(m->m.getChapitres().size()).sum();
   boolean offer=f.getSupplementClasses().signum()>0||f.isClassesGratuites();
   boolean activeClass=classes.existsByFormationIdAndStatutAndDateFinGreaterThanEqual(f.getId(),"ACTIVE",LocalDate.now());
   return new CatalogueItem(f.getId(),f.getTitre(),f.getDescription(),url(f.getImageCouvertureKey()),f.getLangue(),f.getNiveau(),
    f.getCategorie(),f.getPrix(),f.getSupplementClasses(),f.getPrix().add(f.getSupplementClasses()),
-   offer,activeClass,f.getFormateur().getNom(),f.getModules().size(),chapters);}
- private PublicModule module(FormationModule m,boolean full){boolean locked=!full&&!m.isApercuGratuit();
-  return new PublicModule(m.getId(),m.getTitre(),m.getDescription(),m.getPosition(),m.isApercuGratuit(),locked,
+   offer,activeClass,f.getFormateur().getNom(),visible.size(),chapters);}
+ private boolean modulePublishable(FormationModule module){return !module.getChapitres().isEmpty()&&module.getChapitres().stream().allMatch(chapter->!chapter.getRessources().isEmpty()&&chapter.getRessources().stream().allMatch(resource->resource.getStatut()==ResourceStatus.DISPONIBLE));}
+ private PublicModule module(FormationModule m,boolean full,int visibleOrder){boolean locked=!full&&!m.isApercuGratuit();
+  return new PublicModule(m.getId(),m.getTitre(),m.getDescription(),visibleOrder,m.isApercuGratuit(),locked,
    m.getChapitres().stream().map(c->chapter(c,locked)).toList());}
  private PublicChapter chapter(Chapitre c,boolean locked){return new PublicChapter(c.getId(),c.getTitre(),c.getDescription(),c.getPosition(),locked,
   c.getRessources().stream().map(r->new PublicResource(r.getId(),r.getType(),r.getTitre(),r.getPosition(),locked,null)).toList());}

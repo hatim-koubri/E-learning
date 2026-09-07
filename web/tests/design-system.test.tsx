@@ -103,6 +103,7 @@ describe("design system et accueil", () => {
     const spaceLinks = await screen.findAllByRole("link", {name: "Mon espace"});
     expect(spaceLinks.length).toBeGreaterThan(0);
     spaceLinks.forEach((link) => expect(link).toHaveAttribute("href", expectedHref));
+    expect(screen.getAllByRole("button", {name: "Se déconnecter"}).length).toBeGreaterThan(0);
     expect(screen.queryByRole("link", {name: "Devenir formateur"})).not.toBeInTheDocument();
   });
 

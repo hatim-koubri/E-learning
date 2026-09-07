@@ -14,18 +14,27 @@ function statusAt(session: Session, now: number | null) {
   return {label: "Planifiée", variant: "warning" as const};
 }
 
-function countdown(session: Session, now: number | null) {
+export function sessionCountdown(session: Session, now: number | null) {
   if (now === null || session.statut !== "PLANIFIEE") return null;
   const start = new Date(session.dateDebut).getTime();
   const end = new Date(session.dateFin).getTime();
   if (now >= start && now < end) return "Accessible maintenant";
   if (now > end) return null;
-  const minutes = Math.max(1, Math.ceil((start - now) / 60_000));
-  if (minutes < 60) return `Commence dans ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  if (hours < 24) return `Commence dans ${hours} h${remaining ? ` ${remaining} min` : ""}`;
-  const days = Math.ceil(hours / 24);
+  const startDate = new Date(start);
+  const nowDate = new Date(now);
+  const sameDay = startDate.getFullYear() === nowDate.getFullYear()
+    && startDate.getMonth() === nowDate.getMonth()
+    && startDate.getDate() === nowDate.getDate();
+  if (sameDay) {
+    const minutes = Math.max(1, Math.ceil((start - now) / 60_000));
+    if (minutes < 60) return `Commence dans ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+    return `Commence dans ${hours} h${remaining ? ` ${remaining} min` : ""}`;
+  }
+  const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()).getTime();
+  const currentDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+  const days = Math.max(1, Math.round((startDay - currentDay) / 86_400_000));
   return `Commence dans ${days} jour${days > 1 ? "s" : ""}`;
 }
 
@@ -57,7 +66,7 @@ export function SessionTiming({session, now: providedNow}: {session: Session; no
   const internalNow = useSessionClock(providedNow === undefined);
   const now = providedNow === undefined ? internalNow : providedNow;
   const status = statusAt(session, now);
-  const remaining = countdown(session, now);
+  const remaining = sessionCountdown(session, now);
   return (
     <div className="session-timing">
       <Badge variant={status.variant}>{status.label}</Badge>

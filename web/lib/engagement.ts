@@ -90,7 +90,9 @@ export type NotificationCategory =
   | "QUIZ"
   | "REPONSE_FORMATEUR"
   | "OBJECTIF_HEBDOMADAIRE"
-  | "COMPTE_FORMATEUR";
+  | "COMPTE_FORMATEUR"
+  | "ACCOUNT_WELCOME"
+  | "CERTIFICATE_AVAILABLE";
 export type AppNotification = {
   id: number;
   categorie: NotificationCategory;
@@ -110,6 +112,47 @@ export type NotificationPreference = {
   categorie: NotificationCategory;
   dansApplication: boolean;
   emailActif: boolean;
+  configurableDansApplication: boolean;
+  configurableEmail: boolean;
+};
+export type ModerationReport = {
+  signalement: {
+    id: number;
+    motif: string;
+    date?: string | null;
+    statut: "EN_ATTENTE" | "TRAITE_AVIS_REPUBLIE" | "TRAITE_AVIS_MASQUE";
+  };
+  avis: {
+    id: number;
+    note: number;
+    commentaire: string;
+    statut: "PUBLIE" | "SIGNALE" | "MASQUE";
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    reponseFormateur?: string | null;
+  };
+  contexte: {
+    formationId: number;
+    formationTitre: string;
+    auteurNom: string;
+    formateurNom: string;
+  };
+  decision?: {
+    resultat: "REPUBLIER" | "MASQUER";
+    date?: string | null;
+    adminId?: number | null;
+  } | null;
+};
+export type ModerationQueue = {
+  content: ModerationCase[];
+  page: number;
+  totalPages: number;
+  totalElements: number;
+};
+export type ModerationCase = {
+  avis: ModerationReport["avis"];
+  contexte: ModerationReport["contexte"];
+  signalements: ModerationReport["signalement"][];
 };
 export type Dashboard = {
   reprise?: Resume;
@@ -121,7 +164,9 @@ export type Dashboard = {
     titre: string;
     formation: string;
     dateDebut: string;
+    dateFin: string;
     fuseauHoraire: string;
+    hostReady: boolean;
   };
   quizDisponibles: number;
   formations: {
@@ -164,6 +209,5 @@ export type InstructorProfile = {
   biographie?: string;
   apprenants: number;
   moyenneAvis: number;
-  prochaineClasse?: {id: number; titre: string; formation: string; dateDebut: string; fuseauHoraire: string};
   formations: {id: number; titre: string; categorie: string; niveau: Niveau}[];
 };

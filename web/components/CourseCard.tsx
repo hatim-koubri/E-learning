@@ -45,10 +45,11 @@ export function CourseCard({course}: {course: CatalogueItem}) {
   }
 
   return (
-    <article className="course-card" ref={cardRef} onPointerMove={updateTilt} onPointerLeave={resetTilt}>
+    <article className={`course-card ${course.inscrit?"enrolled":""}`} ref={cardRef} onPointerMove={updateTilt} onPointerLeave={resetTilt}>
       <Link className="course-media" href={`/catalogue/${course.id}`} aria-label={`Voir ${course.titre}`}>
         {course.imageUrl ? (
           <Image
+            unoptimized
             width={560}
             height={315}
             sizes="(max-width: 700px) calc(100vw - 28px), (max-width: 1100px) calc(50vw - 30px), 380px"
@@ -58,7 +59,7 @@ export function CourseCard({course}: {course: CatalogueItem}) {
         ) : (
           <span><BookOpen aria-hidden="true" size={34} /></span>
         )}
-        <Badge variant="primary">{levelLabel(course.niveau)}</Badge>
+        <span className="course-media-badges"><Badge variant="primary">{levelLabel(course.niveau)}</Badge>{course.inscrit&&<Badge variant="success">Déjà acquise</Badge>}</span>
       </Link>
       <div className="course-card-body">
         <span className="course-category">{course.categorie}</span>
@@ -74,7 +75,7 @@ export function CourseCard({course}: {course: CatalogueItem}) {
         <div className="course-card-footer">
           <strong>{course.prix === 0 ? "Gratuite" : `${course.prix} DH`}</strong>
           <FavoriteButton formationId={course.id} compact />
-          <Link className="text-link" href={`/catalogue/${course.id}`}>Découvrir <ArrowRight size={16} /></Link>
+          <Link className="text-link" href={course.inscrit?`/apprentissage/${course.id}`:`/catalogue/${course.id}`}>{course.inscrit?"Continuer":"Découvrir"} <ArrowRight size={16} /></Link>
         </div>
       </div>
     </article>

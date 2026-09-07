@@ -13,6 +13,8 @@ import {
   NotebookPen,
   ShieldCheck,
   UserRound,
+  Users,
+  ScrollText,
   X,
 } from "lucide-react";
 import {ReactNode, useEffect, useRef, useState} from "react";
@@ -20,6 +22,7 @@ import {Brand} from "@/components/Brand";
 import {ThemeToggle} from "@/components/ThemeToggle";
 import {IconButton} from "@/components/ui";
 import type {User} from "@/lib/api";
+import {prefetchParticipantClasses} from "@/lib/classes";
 
 const roleLabels: Record<User["role"], string> = {
   ADMIN: "Administration",
@@ -29,18 +32,20 @@ const roleLabels: Record<User["role"], string> = {
 
 const navByRole = {
   ADMIN: [
-    {href: "/admin/formateurs", label: "Demandes formateurs", icon: ShieldCheck},
-    {href: "/admin/avis", label: "Avis signalés", icon: Flag},
+    {href: "/admin", label: "Vue d’ensemble", icon: LayoutDashboard},
+    {href: "/admin/utilisateurs", label: "Utilisateurs", icon: Users},
+    {href: "/admin/formateurs", label: "Demandes Formateur", icon: ShieldCheck},
+    {href: "/admin/avis", label: "Modération des avis", icon: Flag},
+    {href: "/admin/audit", label: "Journal d’audit", icon: ScrollText},
     {href: "/notifications", label: "Notifications", icon: Bell},
-    {href: "/profile", label: "Mon profil", icon: UserRound},
   ],
   FORMATEUR: [
-    {href: "/formateur/formations", label: "Mes formations", icon: GraduationCap},
-    {href: "/formateur/classes", label: "Classes virtuelles", icon: CalendarDays},
+    {href: "/formateur", label: "Tableau de bord", icon: LayoutDashboard},
+    {href: "/formateur/formations", label: "Formations", icon: GraduationCap},
+    {href: "/formateur/classes", label: "Classes", icon: CalendarDays},
     {href: "/formateur/engagement", label: "Engagement", icon: LayoutDashboard},
+    {href: "/formateur/profil", label: "Profil public", icon: UserRound},
     {href: "/notifications", label: "Notifications", icon: Bell},
-    {href: "/catalogue", label: "Voir le catalogue", icon: BookOpen},
-    {href: "/profile", label: "Mon profil", icon: UserRound},
   ],
   PARTICIPANT: [
     {href: "/profile", label: "Tableau de bord", icon: LayoutDashboard},
@@ -90,7 +95,10 @@ export function AppShell({
     const previousOverflow = document.body.style.overflow;
     const focusableSelector = "button:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])";
     document.body.style.overflow = "hidden";
-    queueMicrotask(() => sidebar?.querySelector<HTMLElement>(focusableSelector)?.focus());
+    queueMicrotask(() => (
+      sidebar?.querySelector<HTMLElement>("[data-mobile-menu-close]")
+      ?? sidebar?.querySelector<HTMLElement>(focusableSelector)
+    )?.focus());
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -125,7 +133,7 @@ export function AppShell({
 
   const navigation = navByRole[role];
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${role.toLowerCase()}-shell`}>
       <aside
         aria-hidden={mobile && !open || undefined}
         aria-label={mobile && open ? `Menu ${roleLabels[role]}` : undefined}
@@ -138,16 +146,24 @@ export function AppShell({
       >
         <div className="sidebar-top">
           <Brand />
-          <IconButton label="Fermer le menu" className="sidebar-close" onClick={() => setOpen(false)}>
+          <IconButton label="Fermer le menu" className="sidebar-close" data-mobile-menu-close onClick={() => setOpen(false)}>
             <X size={20} />
           </IconButton>
         </div>
         <div className="workspace-label">{roleLabels[role]}</div>
         <nav className="sidebar-nav" aria-label={roleLabels[role]}>
           {navigation.map(({href, label, icon: Icon}) => {
-            const active = href === "/profile" ? pathname === href : pathname.startsWith(href);
+            const active = href === "/profile" || href === "/admin" || href === "/formateur" ? pathname === href : pathname.startsWith(href);
             return (
-              <Link className={active ? "active" : ""} href={href} key={href} onClick={() => setOpen(false)}>
+              <Link
+                aria-current={active ? "page" : undefined}
+                className={active ? "active" : ""}
+                href={href}
+                key={href}
+                onClick={() => setOpen(false)}
+                onFocus={href === "/participant/classes" ? prefetchParticipantClasses : undefined}
+                onPointerEnter={href === "/participant/classes" ? prefetchParticipantClasses : undefined}
+              >
                 <Icon aria-hidden="true" size={19} />
                 <span>{label}</span>
               </Link>

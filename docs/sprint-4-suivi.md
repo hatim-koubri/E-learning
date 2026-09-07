@@ -10,6 +10,10 @@
   le formateur propriétaire lui donne accès à une classe.
 - Le nom de salle est un UUID généré côté serveur. `JITSI_BASE_URL` permet de remplacer l'instance de
   développement par une instance auto-hébergée sans modifier le métier.
+- La configuration actuelle ne contient ni App ID ni secret Jitsi et ne signe aucun JWT de réunion.
+  NexaLearn contrôle l'accès à `joinUrl`, la fenêtre temporelle et le caractère non prévisible de la
+  salle ; les capacités d'hôte ou de modération restent celles de l'instance Jitsi configurée. Aucun
+  profil public, notification ou email n'expose le nom de salle ou l'URL de réunion.
 - Flutter utilise `flutter_secure_storage`, détecte l'absence de réseau et ouvre l'URL Jitsi contrôlée
   dans l'application externe. Le SDK natif Jitsi est reporté afin de stabiliser le MVP.
 - `kotlin.incremental=false` évite sous Windows l'échec des caches Kotlin lorsque Pub est sur `C:` et le

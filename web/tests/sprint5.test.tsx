@@ -1,4 +1,4 @@
-import {render, screen, waitFor} from "@testing-library/react";
+import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import ReviewModerationPage from "@/app/admin/avis/page";
@@ -47,44 +47,26 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     localStorage.setItem("user", JSON.stringify(participant));
   });
 
-  it("termine l’orientation publique et explique une recommandation réelle", async () => {
+  it("mène une orientation publique conversationnelle avec une recommandation réelle", async () => {
     currentMock.mockReturnValue(null);
-    apiMock.mockResolvedValue([{
-      formationId: 7,
-      titre: "Data accessible",
-      categorie: "Data",
-      niveau: "DEBUTANT",
-      prix: 0,
-      score: 65,
-      raisons: ["Dans votre domaine préféré", "Correspond à votre niveau"],
-    }]);
+    const conversation={id:3,sessionId:"visitor-session-123456",titre:"Nouvelle orientation",statut:"ACTIVE",profil:{competences:[]},messages:[],recommandations:[],createdAt:"2026-08-14",updatedAt:"2026-08-14"};
+    apiMock.mockResolvedValueOnce(conversation).mockResolvedValueOnce({message:{id:2,role:"ASSISTANT",contenu:"Voici une formation réelle.",statut:"COMPLETE",createdAt:"2026-08-14"},profil:{objectif:"Découvrir la data",competences:[]},recommandations:[{formationId:7,titre:"Data accessible",categorie:"Data",formateur:"Sara",niveau:"DEBUTANT",langue:"fr",prix:0,score:65,rang:1,classesDisponibles:false,raisons:["Dans votre domaine préféré"],modules:["Fondations"],href:"/catalogue/7"}]});
     const user = userEvent.setup();
     render(<OrientationPage />);
-
-    const objective = screen.getByPlaceholderText(/préparer une reconversion/i);
-    await user.type(objective, "Découvrir les métiers de la donnée");
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "intermediaire"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "Data"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "2 heures"}));
-    await user.click(screen.getByRole("button", {name: /Continuer/}));
-    await user.click(screen.getByRole("button", {name: "Lecture"}));
-    await user.click(screen.getByRole("button", {name: /Voir mes recommandations/}));
-
+    const input=await screen.findByLabelText("Votre message");await user.type(input,"Je veux découvrir les métiers de la donnée");await user.click(screen.getByRole("button",{name:/Envoyer/}));
     expect(await screen.findByText("Data accessible")).toBeInTheDocument();
     expect(screen.getByText("Dans votre domaine préféré")).toBeInTheDocument();
-    expect(apiMock).toHaveBeenCalledWith("/orientation/recommandations", expect.objectContaining({
+    expect(apiMock).toHaveBeenCalledWith("/orientation/conversations/3/messages", expect.objectContaining({
       method: "POST",
-      body: expect.stringContaining("\"domaine\":\"Data\""),
+      body: expect.stringContaining("métiers de la donnée"),
     }));
-    await user.click(screen.getByRole("button", {name: "Modifier mes réponses"}));
-    expect(screen.getByText("Question 5 sur 5")).toBeInTheDocument();
+    expect(screen.getByRole("link",{name:"Voir la formation"})).toHaveAttribute("href","/catalogue/7");
   });
 
   it("enregistre ou ignore l’onboarding sans forcer les rappels", async () => {
-    apiMock.mockResolvedValue({});
+    const defaults={domaines:[],niveau:"DEBUTANT",objectif:"",minutesHebdomadaires:60,formatPrefere:"PRATIQUE",rappelsActifs:false,onboardingTermine:false,onboardingIgnore:false,fuseauHoraire:"Africa/Casablanca"};
+    const saved={...defaults,domaines:["Développement"],niveau:"INTERMEDIAIRE",objectif:"Concevoir des applications",minutesHebdomadaires:120,formatPrefere:"LECTURE",onboardingTermine:true};
+    apiMock.mockResolvedValueOnce(defaults).mockResolvedValueOnce(saved).mockResolvedValueOnce({...saved,onboardingTermine:false,onboardingIgnore:true});
     const user = userEvent.setup();
     render(<OnboardingPage />);
 
@@ -93,11 +75,12 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     await user.type(screen.getByPlaceholderText(/évoluer vers un poste/i), "Concevoir des applications");
     await user.selectOptions(screen.getByLabelText("Temps disponible par semaine"), "120");
     await user.selectOptions(screen.getByLabelText("Format préféré"), "LECTURE");
-    await user.click(screen.getByRole("button", {name: /Personnaliser mon espace/}));
+    await user.click(screen.getByRole("button", {name: /Enregistrer mes préférences/}));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/participant/preferences", expect.objectContaining({
       method: "PUT",
       body: expect.stringContaining("\"rappelsActifs\":false"),
     })));
+    await user.click(await screen.findByRole("button", {name: "Accéder à mon profil"}));
     expect(replace).toHaveBeenCalledWith("/profile");
 
     await user.click(screen.getByRole("button", {name: "Ignorer pour le moment"}));
@@ -137,12 +120,14 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
       message: "Votre classe commence à 10 h.", actionUrl: "/participant/classes",
       lue: false, createdAt: "2026-07-30T10:00:00Z",
     };
-    apiMock.mockImplementation(async (path) => {
-      if (path === "/notifications") {
+    apiMock.mockImplementation(async (path, options) => {
+      if (path === "/notifications?page=0&size=20") {
         return {content: [notification, {...notification, id: 5, titre: "Quiz publié"}], nonLues: 2, page: 0, totalPages: 1};
       }
       if (path === "/notifications/preferences") {
-        return [{categorie: "CLASSE", dansApplication: true, emailActif: false}];
+        if (options?.method === "PUT") return {...(JSON.parse(String(options.body))), configurableDansApplication: true, configurableEmail: true};
+        return [{categorie: "CLASSE", dansApplication: true, emailActif: false,
+          configurableDansApplication: true, configurableEmail: true}];
       }
       return {};
     });
@@ -154,7 +139,7 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     expect(await screen.findByText("1 non lue(s)")).toBeInTheDocument();
     await user.click(screen.getByRole("button", {name: /Tout marquer comme lu/}));
     expect(await screen.findByText("0 non lue(s)")).toBeInTheDocument();
-    await user.click(screen.getByLabelText(/Email facultatif/));
+    await user.click(screen.getByLabelText("Email"));
     expect(apiMock).toHaveBeenCalledWith("/notifications/preferences", expect.objectContaining({method: "PUT"}));
   });
 
@@ -275,26 +260,33 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
 
   it("modère un signalement sans modifier la note", async () => {
     currentMock.mockReturnValue({...participant, role: "ADMIN"});
-    apiMock.mockImplementation(async (path) =>
-      path === "/admin/avis/signalements"
-        ? [{id: 1, reviewId: 9, motif: "Contenu à vérifier", createdAt: "2026-07-30T10:00:00Z"}]
-        : {});
+    let resolved = false;
+    apiMock.mockImplementation(async (path) => {
+      if (path === "/admin/avis/signalements?page=0&size=20") return {
+        content: resolved ? [] : [{
+          avis: {id: 9, note: 4, commentaire: "Avis inchangé", statut: "SIGNALE", createdAt: null, updatedAt: null, reponseFormateur: null},
+          contexte: {formationId: 7, formationTitre: "Java moderne", auteurId: 3, auteurNom: "Pat", formateurId: 2, formateurNom: "Sara"},
+          signalements: [{id: 1, motif: "Contenu à vérifier", date: "2026-07-30T10:00:00Z", statut: "EN_ATTENTE"}],
+        }], page: 0, totalPages: 1, totalElements: resolved ? 0 : 1,
+      };
+      if (path === "/admin/avis/9/masquer") { resolved = true; return {}; }
+      return {};
+    });
     const user = userEvent.setup();
     render(<ReviewModerationPage />);
 
     expect(await screen.findByText("Contenu à vérifier")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", {name: /Masquer/}));
+    await user.click(screen.getByRole("button", {name: "Confirmer le masquage"}));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Confirmer le masquage"}));
     expect(await screen.findByText("Aucun signalement à traiter")).toBeInTheDocument();
-    expect(apiMock).toHaveBeenCalledWith("/admin/avis/9/moderation", {
-      method: "PUT", body: JSON.stringify({statut: "MASQUE"}),
-    });
+    expect(apiMock).toHaveBeenCalledWith("/admin/avis/9/masquer", {method: "PATCH"});
   });
 
   it("affiche le profil formateur public sans coordonnée privée", async () => {
     currentMock.mockReturnValue(null);
     apiMock.mockResolvedValue({
       id: 7, nom: "Sara", specialite: "Architecture Java", biographie: "Formatrice backend.",
-      apprenants: 42, moyenneAvis: 4.8, prochaineClasse: null,
+      apprenants: 42, moyenneAvis: 4.8,
       formations: [{id: 8, titre: "API robustes", categorie: "Java", niveau: "INTERMEDIAIRE"}],
     });
     render(<InstructorPage />);
@@ -302,7 +294,23 @@ describe("Sprint 5 — engagement, personnalisation et acquisition", () => {
     expect(await screen.findByRole("heading", {name: "Sara"})).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByRole("link", {name: "Voir la formation"})).toHaveAttribute("href", "/catalogue/8");
+    expect(screen.queryByRole("heading", {name: /Prochaine classe/i})).not.toBeInTheDocument();
+    expect(screen.queryByText(/séance/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+  });
+
+  it("affiche un profil formateur sans formation et sans dépendre d’un ancien champ de séance", async () => {
+    currentMock.mockReturnValue(null);
+    apiMock.mockResolvedValue({
+      id: 7, nom: "Sara", specialite: "Architecture Java", biographie: "Formatrice backend.",
+      apprenants: 0, moyenneAvis: 0, formations: [],
+    });
+
+    render(<InstructorPage />);
+
+    expect(await screen.findByRole("heading", {name: "Sara"})).toBeInTheDocument();
+    expect(screen.getByRole("heading", {name: "Aucune formation publiée"})).toBeInTheDocument();
+    expect(screen.queryByText(/classe publique|prochaine classe|séance/i)).not.toBeInTheDocument();
   });
 
   it("met à jour un favori immédiatement et revient à l’état serveur en cas d’échec", async () => {

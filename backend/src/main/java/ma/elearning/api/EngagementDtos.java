@@ -64,8 +64,6 @@ public final class EngagementDtos {
                                 int page, int totalPages) {}
     public record ReviewReplyRequest(@NotBlank @Size(max = 2000) String reponse) {}
     public record ReviewReportRequest(@NotBlank @Size(max = 500) String motif) {}
-    public record ReviewModerationRequest(@NotNull ReviewStatus statut) {}
-    public record ReviewReportResponse(Long id, Long reviewId, String motif, Instant createdAt) {}
     public record TrainerEngagement(long inscriptions, long avisPublies, double moyenneAvis,
                                     List<ReviewResponse> avis) {}
 
@@ -76,12 +74,14 @@ public final class EngagementDtos {
     public record NotificationPreferenceRequest(@NotNull NotificationCategory categorie,
                                                 boolean dansApplication, boolean emailActif) {}
     public record NotificationPreferenceResponse(NotificationCategory categorie,
-                                                 boolean dansApplication, boolean emailActif) {}
+                                                 boolean dansApplication, boolean emailActif,
+                                                 boolean configurableDansApplication,
+                                                 boolean configurableEmail) {}
 
     public record DashboardEnrollment(Long formationId, String titre, BigDecimal progression,
                                       String typeAcces) {}
     public record DashboardClass(Long id, String titre, String formation, Instant dateDebut,
-                                 String fuseauHoraire) {}
+                                 Instant dateFin, String fuseauHoraire, boolean hostReady) {}
     public record RecentActivity(ActivityType type, String formation, int minutesValidees,
                                  Instant occurredAt) {}
     public record DashboardResponse(ResumeResponse reprise, String prochaineAction,
@@ -102,7 +102,7 @@ public final class EngagementDtos {
     public record InstructorCourse(Long id, String titre, String categorie, NiveauFormation niveau) {}
     public record InstructorProfile(Long id, String nom, String specialite, String biographie,
                                     long apprenants, double moyenneAvis,
-                                    DashboardClass prochaineClasse, List<InstructorCourse> formations) {}
+                                    List<InstructorCourse> formations) {}
     public record InstructorProfileRequest(@NotBlank @Size(max = 160) String specialite,
                                            @NotBlank @Size(max = 3000) String biographie) {}
 }

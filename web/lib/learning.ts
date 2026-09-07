@@ -1,5 +1,5 @@
 import type {Niveau,ResourceType} from "./formations";
-export type CatalogueItem={id:number;titre:string;description:string;imageUrl?:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses:number;prixAvecClasses:number;offreClasses:boolean;classeActive:boolean;formateur:string;nombreModules:number;nombreChapitres:number};
+export type CatalogueItem={id:number;titre:string;description:string;imageUrl?:string;langue:string;niveau:Niveau;categorie:string;prix:number;supplementClasses:number;prixAvecClasses:number;offreClasses:boolean;classeActive:boolean;formateur:string;nombreModules:number;nombreChapitres:number;inscrit?:boolean};
 export type CataloguePage={content:CatalogueItem[];page:number;size:number;totalElements:number;totalPages:number};
 export type PublicResource={id:number;type:ResourceType;titre:string;ordre:number;verrouille:boolean;url?:string};
 export type PublicChapter={id:number;titre:string;description?:string;ordre:number;verrouille:boolean;ressources:PublicResource[]};
@@ -24,7 +24,9 @@ export type ResourceAccess={
   taille?:number|null;
 };
 export type ProgressResponse={formationId:number;chapitreId:number;termine:boolean;positionVideoSecondes:number;pourcentage:number};
-export type QuizParticipant={id:number;titre:string;scoreMinimal:number;important:boolean;tentativesRestantes:number;prochaineDisponibilite?:string|null;questions:{id:number;libelle:string;ordre:number;points:number;reponses:{id:number;libelle:string;ordre:number}[]}[]};
+export type QuizParticipant={id:number;titre:string;scoreMinimal:number;important:boolean;tentativesRestantes:number;prochaineDisponibilite?:string|null;dernierPourcentage?:number|null;dernierResultat?:boolean|null;derniereSoumission?:string|null;questions:{id:number;libelle:string;ordre:number;points:number;reponses:{id:number;libelle:string;ordre:number}[]}[]};
+export type PlannedQuiz={id:number;titre:string;moduleId?:number|null;moduleTitre?:string|null;chapitreId?:number|null;type:"MODULE"|"FINAL";etat:"VERROUILLE"|"DISPONIBLE"|"REUSSI";reussi:boolean};
+export type EvaluationPlan={quizModules:PlannedQuiz[];quizFinal?:PlannedQuiz|null;evaluationsReussies:number;evaluationsObligatoires:number;certificatDisponible:boolean};
 export type QuizResult={
   tentativeId:number;
   score:number;

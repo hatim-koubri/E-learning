@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 import static ma.elearning.api.FormationDtos.*;
 
@@ -36,6 +37,9 @@ public class FormationController {
     FormationDetail detail(Authentication auth, @PathVariable Long id) {
         return service.detail(auth.getName(), id);
     }
+
+    @GetMapping("/formations/{id}/couverture-acces")
+    Map<String,Object> coverAccess(Authentication auth,@PathVariable Long id){return service.coverAccess(auth.getName(),id);}
 
     @PutMapping("/formations/{id}")
     FormationDetail update(Authentication auth, @PathVariable Long id,

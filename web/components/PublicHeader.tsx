@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {Menu, X} from "lucide-react";
+import {LogOut, Menu, X} from "lucide-react";
 import {useEffect, useRef, useState} from "react";
 import {Brand} from "@/components/Brand";
 import {useResolvedSession} from "@/components/GuestOnly";
@@ -12,6 +12,12 @@ function dashboardHref(role: User["role"]) {
   if (role === "ADMIN") return "/admin/formateurs";
   if (role === "FORMATEUR") return "/formateur/formations";
   return "/profile";
+}
+
+function signOut() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+  location.href = "/login";
 }
 
 export function PublicHeader() {
@@ -100,7 +106,12 @@ export function PublicHeader() {
           )}
           <div className="mobile-nav-actions">
             {!resolved ? null : user ? (
-              <Link className="btn btn-primary" href={dashboardHref(user.role)}>Mon espace</Link>
+              <>
+                <Link className="btn btn-primary" href={dashboardHref(user.role)}>Mon espace</Link>
+                <button className="btn btn-ghost" type="button" onClick={signOut}>
+                  <LogOut size={17} aria-hidden="true" /> Se déconnecter
+                </button>
+              </>
             ) : (
               <>
                 <Link className="btn btn-ghost" href="/login">Connexion</Link>
@@ -112,7 +123,12 @@ export function PublicHeader() {
         <div className="header-actions">
           <ThemeToggle />
           {!resolved ? null : user ? (
-            <Link className="btn btn-primary desktop-action" href={dashboardHref(user.role)}>Mon espace</Link>
+            <>
+              <Link className="btn btn-primary desktop-action" href={dashboardHref(user.role)}>Mon espace</Link>
+              <button className="btn btn-ghost desktop-action header-logout" type="button" onClick={signOut}>
+                <LogOut size={17} aria-hidden="true" /> Se déconnecter
+              </button>
+            </>
           ) : (
             <>
               <Link className="btn btn-ghost desktop-action" href="/login">Connexion</Link>

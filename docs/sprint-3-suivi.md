@@ -23,7 +23,9 @@
 - Tous les chapitres doivent être terminés avant l'accès aux quiz publiés.
 - Une question est réussie seulement lorsque l'ensemble exact de ses réponses correctes est sélectionné.
 - Aucun téléchargement hors ligne n'est exposé; les réponses d'accès indiquent toujours
-  `telechargeable=false`.
+  `telechargeable=false`. Cela supprime l’action de téléchargement mais ne constitue pas un DRM :
+  un média consultable côté client transmet nécessairement ses octets. L’autorisation backend,
+  l’URL temporaire et l’absence de clé MinIO permanente sont les garanties réellement fournies.
 
 ## Migration
 

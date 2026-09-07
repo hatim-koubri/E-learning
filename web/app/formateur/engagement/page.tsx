@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {MessageSquareReply, Save, Star, UsersRound} from "lucide-react";
-import {FormEvent, useEffect, useState} from "react";
+import {FormEvent, useEffect, useRef, useState} from "react";
 import {AppShell} from "@/components/AppShell";
 import {PageHeader} from "@/components/PageHeader";
 import {Protected} from "@/components/Protected";
@@ -34,6 +34,9 @@ export default function TrainerEngagementPage() {
   const [loadError, setLoadError] = useState<LoadFailure | null>(null);
   const [actionError, setActionError] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [profileLoading,setProfileLoading]=useState(true),[profileSaving,setProfileSaving]=useState(false),[profileDirty,setProfileDirty]=useState(false);
+  const [specialite,setSpecialite]=useState(""),[biographie,setBiographie]=useState("");
+  const specialtyRef=useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
 
   async function load() {
@@ -52,23 +55,29 @@ export default function TrainerEngagementPage() {
     const id = currentUser()?.id;
     if (!id) return;
     setProfileError("");
-    try { setProfile(await api<InstructorProfile>(`/formateurs/${id}`)); }
-    catch (reason) { setProfileError((reason as Error).message); }
+    setProfileLoading(true);
+    try { const loaded=await api<InstructorProfile>(`/formateurs/${id}`);setProfile(loaded);if(!profileDirty){setSpecialite(loaded.specialite||"");setBiographie(loaded.biographie||"");} }
+    catch (reason) { const failure=loadFailure(reason);setProfileError(errorPresentation(failure).message); }
+    finally{setProfileLoading(false);}
   }
 
+  // Chargement initial uniquement; les nouvelles saisies sont ensuite protégées par profileDirty.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { queueMicrotask(() => { void load(); void loadProfile(); }); }, []);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    if(!specialite.trim()||!biographie.trim()){setActionError("La spécialité et la biographie sont obligatoires.");specialtyRef.current?.focus();return;}
+    setProfileSaving(true);
     try {
       setActionError("");
       setProfile(await api<InstructorProfile>("/formateur/profil-public", {
         method: "PUT",
-        body: JSON.stringify({specialite: form.get("specialite"), biographie: form.get("biographie")}),
-      }));
+        body: JSON.stringify({specialite, biographie}),
+      }));setProfileDirty(false);
       setMessage("Profil public mis à jour.");
-    } catch (reason) { setActionError((reason as Error).message); }
+    } catch (reason) { const failure=loadFailure(reason);setActionError(errorPresentation(failure).message); }
+    finally{setProfileSaving(false);}
   }
 
   async function sendReply(review: Review) {
@@ -93,16 +102,12 @@ export default function TrainerEngagementPage() {
         {presentedError && <ErrorState title={presentedError.title} message={presentedError.message} onRetry={load} />}
         {actionError && <Alert variant="error">{actionError}</Alert>}
         {profileError && <Alert variant="error">Le profil public n’a pas pu être chargé. <Button size="sm" variant="secondary" onClick={loadProfile}>Réessayer le profil</Button></Alert>}
-        {message && <Alert variant="success">{message}</Alert>}
+        {message && <div role="status" aria-live="polite"><Alert variant="success">{message}</Alert></div>}
         {loading ? <Card><Skeleton className="skeleton-cover" /></Card> : data && (
           <>
-            {!empty && <div className="stats-grid">
-                <Card className="stat-card"><span className="stat-icon"><UsersRound size={21} /></span><div><small>Inscriptions réelles</small><strong>{data.inscriptions}</strong></div></Card>
-                <Card className="stat-card"><span className="stat-icon success"><Star size={21} /></span><div><small>Moyenne publiée</small><strong>{data.moyenneAvis || "—"}</strong></div></Card>
-                <Card className="stat-card"><span className="stat-icon warning"><MessageSquareReply size={21} /></span><div><small>Avis publiés</small><strong>{data.avisPublies}</strong></div></Card>
-              </div>}
+            {!empty && <div className="engagement-summary" aria-label="Synthèse réelle"><span><UsersRound size={18}/><strong>{data.inscriptions}</strong> inscriptions</span><span><Star size={18}/><strong>{data.moyenneAvis||"—"}</strong> moyenne publiée</span><span><MessageSquareReply size={18}/><strong>{data.avisPublies}</strong> avis publiés</span></div>}
             <div className="dashboard-grid">
-              <Card>
+              <Card className="engagement-reviews">
                 {empty ? (
                   <EmptyState
                     title="Aucune donnée d’engagement pour le moment"
@@ -124,13 +129,14 @@ export default function TrainerEngagementPage() {
                   </div> : <EmptyState title="Aucun avis" description="Les avis éligibles apparaîtront ici après publication par un participant." />}
                 </>}
               </Card>
-              <Card>
-                <div className="panel-heading"><div><h2>Profil public</h2><p>Aucune coordonnée privée n’est publiée.</p></div></div>
-                <form className="stack" onSubmit={saveProfile}>
-                  <label>Spécialité<input name="specialite" required maxLength={160} defaultValue={profile?.specialite || ""} /></label>
-                  <label>Biographie<textarea name="biographie" required maxLength={3000} defaultValue={profile?.biographie || ""} /></label>
-                  <Button type="submit"><Save size={16} /> Enregistrer</Button>
-                </form>
+              <Card className="public-profile-editor">
+                <div className="panel-heading"><div><span className="resource-kicker">Votre vitrine pédagogique</span><h2>Profil public</h2><p>Aucune coordonnée privée n’est publiée.</p></div>{currentUser()?.id&&<Link className="text-link" href={`/formateurs/${currentUser()!.id}`}>Voir la page publique</Link>}</div>
+                {profile&&!profileLoading&&<div className="public-profile-preview" aria-label="Aperçu du profil public"><span className="avatar" aria-hidden="true">{profile.nom?.slice(0,1)||"F"}</span><div><strong>{profile.nom}</strong><span>{specialite||"Spécialité à renseigner"}</span><p>{biographie||"Votre biographie apparaîtra ici."}</p></div></div>}
+                {profileLoading?<Skeleton className="skeleton-cover"/>:<form className="stack" onSubmit={saveProfile} noValidate>
+                  <label>Spécialité<input ref={specialtyRef} name="specialite" required maxLength={160} value={specialite} onChange={event=>{setSpecialite(event.target.value);setProfileDirty(true)}} /></label><small>{specialite.length}/160</small>
+                  <label>Biographie<textarea name="biographie" required maxLength={3000} value={biographie} onChange={event=>{setBiographie(event.target.value);setProfileDirty(true)}} /></label><small>{biographie.length}/3000</small>
+                  <Button type="submit" loading={profileSaving} disabled={profileSaving}><Save size={16} /> Enregistrer</Button>
+                </form>}
               </Card>
             </div>
           </>
